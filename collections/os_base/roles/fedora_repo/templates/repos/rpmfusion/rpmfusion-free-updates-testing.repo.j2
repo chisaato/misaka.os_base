@@ -1,0 +1,30 @@
+{% for repo in fedora_repo_rpmfusion_free_updates_testing_repos %}
+[{{ repo.repo_id }}]
+name={{ repo.repo_name }}
+{% if fedora_repo_use_cn_mirror %}
+{# 国内的时候,先注释 metalink #}
+{% if fedora_repo_use_mirrorlist is true %}
+{# 如果开启了 mirrorlist 则写入 mirrorlist #}
+mirrorlist={{ repo.mirrorlist }}
+{% else %}
+{# 如果没有开启 mirrorlist 则写入 baseurl #}
+baseurl={{ repo.repo_baseurl }}
+{% endif %}
+{% if fedora_repo_use_metalink is true %}
+{# 如果开启了 metalink 则写入 metalink 此时将是 metalink+mirrorlist 火力全开 #}
+metalink={{ repo.repo_metalink }}
+{% endif %}
+{% else %}
+{# 否则写入 metalink 并注释 baseurl #}
+#baseurl={{ repo.repo_baseurl }}
+metalink={{ repo.repo_metalink }}
+{% endif %}
+enabled={{ repo.repo_enabled }}
+metadata_expire=7d
+repo_gpgcheck=0
+type=rpm-md
+enabled_metadata=0
+gpgcheck=1
+gpgkey={{ repo.repo_gpgkey }}
+
+{% endfor %}

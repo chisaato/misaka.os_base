@@ -1,0 +1,3 @@
+{% for docker_ce_mirror_list_item in docker_ce_mirror_list %}
+https://{{ docker_ce_mirror_list_item }}/docker-ce/linux/{{ ansible_facts['distribution']|lower }}/$releasever/$basearch/stable
+{% endfor %}

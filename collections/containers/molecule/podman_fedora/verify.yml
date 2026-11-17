@@ -1,0 +1,217 @@
+---
+# 校验 docker 角色（Fedora podman 路径）产出的 end-state
+# 依据 roles/docker/tasks/podman/{main.yaml,fedora.yaml}:
+#   - 角色只 enable podman-restart,不 start(生产环境禁止重启服务)
+#   - podman.socket 仅配置 drop-in(/etc/systemd/system/podman.socket.d/),角色并未 enable 它,
+#     其 enabled 状态取决于系统 preset,不作为本场景断言项
+#   - /run/docker.sock 由 systemd-tmpfiles(L 类型)链接到 /run/podman/podman.sock
+- name: 校验 Podman 安装结果
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: 读取 Docker CE repo 与国内 override
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/yum.repos.d/docker-ce.repo
+        - /etc/dnf/repos.override.d/40-misaka-docker-ce.repo
+      register: podman_molecule_repo_configs
+
+    - name: 断言官方 repo 和国内 override 分离
+      vars:
+        podman_molecule_vendor_repo: "{{ podman_molecule_repo_configs.results[0].content | b64decode }}"
+        podman_molecule_cn_override: "{{ podman_molecule_repo_configs.results[1].content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'baseurl=https://download.docker.com/' in podman_molecule_vendor_repo"
+          - "'gpgkey=https://download.docker.com/' in podman_molecule_vendor_repo"
+          - "'mirrorlist=' not in podman_molecule_vendor_repo"
+          - "'[docker-ce-stable]' in podman_molecule_cn_override"
+          - "'[docker-ce-stable-source]' in podman_molecule_cn_override"
+          - "'baseurl=' in podman_molecule_cn_override"
+          - "'mirrorlist=file:///etc/dnf/mirrorlist/docker-ce-stable.mirrorlist' in podman_molecule_cn_override"
+
+    - name: 检查国内 Docker CE mirrorlist
+      ansible.builtin.find:
+        paths: /etc/dnf/mirrorlist
+        patterns: "docker-ce-*.mirrorlist"
+      register: podman_molecule_cn_mirrorlists
+
+    - name: 断言九个 Docker CE mirrorlist 均已渲染
+      ansible.builtin.assert:
+        that:
+          - podman_molecule_cn_mirrorlists.matched | int == 9
+
+    - name: 预留非 Docker CE mirrorlist 以检验清理边界
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/dnf/mirrorlist/fedora-test.mirrorlist
+        content: "https://example.invalid/fedora\n"
+        mode: "0644"
+
+    - name: 模拟切换海外 geo
+      ansible.builtin.include_role:
+        name: misaka.containers.docker
+        tasks_from: fedora_repo.yaml
+      vars:
+        host_geo:
+          country: de
+
+    - name: 检索 geo 切换后的软件源文件
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/dnf/repos.override.d/40-misaka-docker-ce.repo
+        - /etc/dnf/mirrorlist/docker-ce-stable.mirrorlist
+        - /etc/dnf/mirrorlist/fedora-test.mirrorlist
+      register: podman_molecule_geo_paths
+
+    - name: 检查海外是否残留 Docker CE mirrorlist
+      ansible.builtin.find:
+        paths: /etc/dnf/mirrorlist
+        patterns: "docker-ce-*.mirrorlist"
+      register: podman_molecule_orphan_mirrorlists
+
+    - name: 断言海外只清除 Docker CE 自有文件
+      ansible.builtin.assert:
+        that:
+          - not podman_molecule_geo_paths.results[0].stat.exists
+          - not podman_molecule_geo_paths.results[1].stat.exists
+          - podman_molecule_geo_paths.results[2].stat.exists
+          - podman_molecule_orphan_mirrorlists.matched | int == 0
+
+    - name: 恢复国内 geo 配置
+      ansible.builtin.include_role:
+        name: misaka.containers.docker
+        tasks_from: fedora_repo.yaml
+      vars:
+        host_geo:
+          country: cn
+
+    - name: 清除测试用的非 Docker CE mirrorlist
+      become: true
+      ansible.builtin.file:
+        path: /etc/dnf/mirrorlist/fedora-test.mirrorlist
+        state: absent
+
+    - name: 断言 Podman 相关包已通过 rpm 安装
+      ansible.builtin.command: rpm -q {{ item }}  # noqa: command-instead-of-module
+      loop:
+        - podman
+        - docker-ce-cli
+        - docker-compose-plugin
+      register: podman_molecule_rpm
+      changed_when: false
+      failed_when: podman_molecule_rpm.rc != 0
+
+    - name: 断言 Docker 残留及 podman-docker 包已被清理
+      ansible.builtin.command: rpm -q {{ item }}  # noqa: command-instead-of-module
+      loop:
+        - docker-ce
+        - moby-engine
+        - docker-ce-rootless-extras
+        - podman-docker
+      register: podman_molecule_removed
+      changed_when: false
+      failed_when: podman_molecule_removed.rc == 0
+
+    - name: 获取 Podman 与 Docker CLI 版本
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - podman --version
+        - docker --version
+      register: podman_molecule_version
+      changed_when: false
+      failed_when: podman_molecule_version.rc != 0
+
+    - name: 展示 Podman 与 Docker CLI 版本
+      ansible.builtin.debug:
+        msg: "{{ podman_molecule_version.results | map(attribute='stdout') | list }}"
+
+    # 冒烟:rootful podman 初始化存储/运行时,验证容器内真实可用
+    - name: Podman info 冒烟验证
+      ansible.builtin.command: podman info
+      register: podman_molecule_info
+      changed_when: false
+      failed_when: podman_molecule_info.rc != 0
+
+    - name: 断言 podman-restart 已设置开机自启
+      ansible.builtin.command: systemctl is-enabled podman-restart  # noqa: command-instead-of-module
+      register: podman_molecule_restart_enabled
+      changed_when: false
+      failed_when: podman_molecule_restart_enabled.stdout != 'enabled'
+
+    - name: 探测模拟 Docker Socket 状态
+      ansible.builtin.stat:
+        path: /run/docker.sock
+      register: podman_molecule_run_sock
+
+    - name: 断言 /run/docker.sock 已链接到 Podman socket
+      ansible.builtin.assert:
+        that:
+          - podman_molecule_run_sock.stat.exists
+          - podman_molecule_run_sock.stat.islnk
+          - podman_molecule_run_sock.stat.lnk_target == '/run/podman/podman.sock'
+        fail_msg: >-
+          /run/docker.sock 应为指向 /run/podman/podman.sock 的符号链接,
+          实际: islnk={{ podman_molecule_run_sock.stat.islnk | default(false) }},
+          lnk_target={{ podman_molecule_run_sock.stat.lnk_target | default('无') }}
+        success_msg: 模拟 Docker Socket 链接正确
+
+    - name: 断言 Podman Docker 模拟提示已关闭
+      ansible.builtin.stat:
+        path: /etc/containers/nodocker
+      register: podman_molecule_nodocker
+
+    - name: 断言 /etc/containers/nodocker 存在
+      ansible.builtin.assert:
+        that:
+          - podman_molecule_nodocker.stat.exists
+        fail_msg: /etc/containers/nodocker 未生成
+
+    - name: 断言 podman.socket drop-in 已渲染
+      ansible.builtin.stat:
+        path: /etc/systemd/system/podman.socket.d/{{ item }}
+      loop:
+        - 02-podman-user-access.conf
+        - 03-podman-dir-user-access.conf
+      register: podman_molecule_socket_drop_in
+      changed_when: false
+
+    - name: 校验 podman.socket drop-in 文件均存在
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: podman.socket drop-in 缺失
+      loop: "{{ podman_molecule_socket_drop_in.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: 断言 Podman registry 镜像站配置已渲染
+      ansible.builtin.stat:
+        path: /etc/containers/registries.conf.d/{{ item }}
+      loop:
+        - 555-mirrors.conf
+        - 556-unqualified-search.conf
+      register: podman_molecule_registries_conf
+      changed_when: false
+
+    - name: 校验 registries.conf.d 配置文件均存在
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: registries.conf.d 配置缺失
+      loop: "{{ podman_molecule_registries_conf.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # 展示性输出:podman.socket 的实际 enabled 状态取决于系统 preset,非角色产出
+    - name: 展示 podman.socket 当前 enabled 状态
+      ansible.builtin.command: systemctl is-enabled podman.socket  # noqa: command-instead-of-module
+      register: podman_molecule_socket_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: 展示 podman.socket 状态
+      ansible.builtin.debug:
+        msg: "podman.socket is-enabled: {{ podman_molecule_socket_enabled.stdout | default('查询失败') }}"

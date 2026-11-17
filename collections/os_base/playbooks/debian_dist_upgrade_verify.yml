@@ -1,0 +1,11 @@
+---
+- name: Debian 大版本升级 — 只读状态（不替代独立升级验收）
+  gather_facts: false
+  hosts: all
+  vars:
+    debian_dist_upgrade_action: status
+  # host_geo 由 inventory 提供，例如：
+  #   host_geo:
+  #     country: cn   # 未设置时角色默认按 cn 处理
+  roles:
+    - role: misaka.os_base.debian_dist_upgrade

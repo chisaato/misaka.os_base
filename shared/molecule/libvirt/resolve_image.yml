@@ -1,0 +1,242 @@
+---
+- name: 拒绝未知的镜像来源
+  ansible.builtin.assert:
+    that:
+      - libvirt_image_source in ['debian-html', 'fedora-checksum', 'local-manifest']
+    fail_msg: "libvirt_image_source 只能是 debian-html、fedora-checksum 或 local-manifest"
+
+- name: 读取 Debian 目录索引
+  when: libvirt_image_source == 'debian-html'
+  ansible.builtin.uri:
+    url: "{{ libvirt_image_index_url }}"
+    return_content: true
+    status_code: 200
+  register: libvirt_image_index
+
+- name: 解析唯一的 Debian qcow2 文件名
+  when: libvirt_image_source == 'debian-html'
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ libvirt_support_dir }}/../../scripts/libvirt_assets.py"
+      - debian-names
+      - --pattern
+      - "{{ libvirt_image_name_pattern }}"
+  args:
+    stdin: "{{ libvirt_image_index.content }}"
+  register: libvirt_debian_name
+  changed_when: false
+
+- name: 读取 Debian SHA512SUMS
+  when: libvirt_image_source == 'debian-html'
+  ansible.builtin.uri:
+    url: "{{ libvirt_image_index_url }}SHA512SUMS"
+    return_content: true
+    status_code: 200
+  register: libvirt_sha512sums
+
+- name: 解析 Debian SHA512
+  when: libvirt_image_source == 'debian-html'
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ libvirt_support_dir }}/../../scripts/libvirt_assets.py"
+      - debian-sha512
+      - --name
+      - "{{ (libvirt_debian_name.stdout | from_json).filename }}"
+  args:
+    stdin: "{{ libvirt_sha512sums.content }}"
+  register: libvirt_debian_sha
+  changed_when: false
+
+- name: 记下 Debian 基镜像
+  when: libvirt_image_source == 'debian-html'
+  ansible.builtin.set_fact:
+    libvirt_image_filename: "{{ (libvirt_debian_name.stdout | from_json).filename }}"
+    libvirt_base_image: "{{ libvirt_cache_root }}/base/{{ (libvirt_debian_name.stdout | from_json).filename }}"
+    libvirt_expected_digest: "{{ (libvirt_debian_sha.stdout | from_json).sha512 }}"
+    libvirt_digest_algorithm: sha512
+
+- name: 读取 Fedora 镜像目录
+  when: libvirt_image_source == 'fedora-checksum'
+  ansible.builtin.uri:
+    url: "{{ libvirt_image_index_url }}"
+    return_content: true
+    status_code: 200
+  register: libvirt_fedora_index
+
+- name: 找出该版本唯一的 CHECKSUM 文件名
+  when: libvirt_image_source == 'fedora-checksum'
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ libvirt_support_dir }}/../../scripts/libvirt_assets.py"
+      - fedora-checksum-name
+      - --release
+      - "{{ libvirt_fedora_release }}"
+  args:
+    stdin: "{{ libvirt_fedora_index.content }}"
+  register: libvirt_fedora_checksum_name
+  changed_when: false
+
+- name: 读取 Fedora CHECKSUM
+  when: libvirt_image_source == 'fedora-checksum'
+  ansible.builtin.uri:
+    url: "{{ libvirt_fedora_checksum_url | default(libvirt_image_index_url ~ (libvirt_fedora_checksum_name.stdout | from_json).filename) }}"
+    return_content: true
+    status_code: 200
+  register: libvirt_fedora_checksum
+
+- name: 只接受 Generic 变体的一条 SHA256
+  when: libvirt_image_source == 'fedora-checksum'
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ libvirt_support_dir }}/../../scripts/libvirt_assets.py"
+      - fedora-checksum
+      - --pattern
+      - "{{ libvirt_image_name_pattern }}"
+  args:
+    stdin: "{{ libvirt_fedora_checksum.content }}"
+  register: libvirt_fedora_name
+  changed_when: false
+
+- name: 打开 PGP 时必须先有 keyring
+  when:
+    - libvirt_image_source == 'fedora-checksum'
+    - libvirt_fedora_checksum_pgp | bool
+  ansible.builtin.assert:
+    that:
+      - libvirt_fedora_gpg_keyring is defined
+      - libvirt_fedora_gpg_keyring is file
+    fail_msg: "已打开 Fedora CHECKSUM 的 PGP 校验，但 libvirt_fedora_gpg_keyring 不存在"
+
+- name: 把签名原文写到本地后才调用 gpgv
+  when:
+    - libvirt_image_source == 'fedora-checksum'
+    - libvirt_fedora_checksum_pgp | bool
+  ansible.builtin.copy:
+    dest: "{{ libvirt_cache_root }}/base/fedora-CHECKSUM.asc"
+    mode: "0600"
+    content: "{{ libvirt_fedora_checksum.content }}"
+
+- name: 校验 Fedora CHECKSUM 的 PGP 签名
+  when:
+    - libvirt_image_source == 'fedora-checksum'
+    - libvirt_fedora_checksum_pgp | bool
+  ansible.builtin.command:
+    argv:
+      - gpgv
+      - --keyring
+      - "{{ libvirt_fedora_gpg_keyring }}"
+      - "{{ libvirt_cache_root }}/base/fedora-CHECKSUM.asc"
+  changed_when: false
+
+- name: 记下 Fedora 基镜像
+  when: libvirt_image_source == 'fedora-checksum'
+  ansible.builtin.set_fact:
+    libvirt_image_filename: "{{ (libvirt_fedora_name.stdout | from_json).filename }}"
+    libvirt_base_image: "{{ libvirt_cache_root }}/base/{{ (libvirt_fedora_name.stdout | from_json).filename }}"
+    libvirt_expected_digest: "{{ (libvirt_fedora_name.stdout | from_json).sha256 }}"
+    libvirt_digest_algorithm: sha256
+    libvirt_image_index_url: "{{ libvirt_image_index_url if libvirt_image_index_url is match('.*/$') else libvirt_image_index_url ~ '/' }}"
+
+- name: 校验本地 manifest 与镜像摘要
+  when: libvirt_image_source == 'local-manifest'
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ libvirt_support_dir }}/../../scripts/libvirt_assets.py"
+      - local-manifest
+      - --image
+      - "{{ libvirt_image_path }}"
+  register: libvirt_local_manifest
+  changed_when: false
+
+- name: 记下本地 manifest 镜像
+  when: libvirt_image_source == 'local-manifest'
+  ansible.builtin.set_fact:
+    libvirt_image_filename: "{{ (libvirt_local_manifest.stdout | from_json).filename }}"
+    libvirt_source_image: "{{ (libvirt_local_manifest.stdout | from_json).image }}"
+    libvirt_base_image: "{{ libvirt_cache_root }}/base/local-{{ (libvirt_local_manifest.stdout | from_json).sha256 }}.qcow2"
+    libvirt_expected_digest: "{{ (libvirt_local_manifest.stdout | from_json).sha256 }}"
+    libvirt_digest_algorithm: sha256
+
+- name: 本地成品保留原权限并暂存为 qemu 可读的只读基镜像
+  when: libvirt_image_source == 'local-manifest'
+  ansible.builtin.copy:
+    src: "{{ libvirt_source_image }}"
+    dest: "{{ libvirt_base_image }}"
+    remote_src: true
+    mode: "0444"
+
+- name: 再次核对暂存成品摘要而不是只信任复制成功
+  when: libvirt_image_source == 'local-manifest'
+  ansible.builtin.stat:
+    path: "{{ libvirt_base_image }}"
+    checksum_algorithm: sha256
+  register: libvirt_staged_image
+
+- name: 暂存成品摘要必须仍与源 manifest 一致
+  when: libvirt_image_source == 'local-manifest'
+  ansible.builtin.assert:
+    that:
+      - libvirt_staged_image.stat.checksum == libvirt_expected_digest
+
+- name: 下载前检查缓存的基镜像
+  when: libvirt_image_source != 'local-manifest'
+  ansible.builtin.stat:
+    path: "{{ libvirt_base_image }}"
+    checksum_algorithm: "{{ libvirt_digest_algorithm }}"
+  register: libvirt_base_stat
+
+- name: 下载缺失或摘要不符的基镜像
+  when:
+    - libvirt_image_source != 'local-manifest'
+    - not libvirt_base_stat.stat.exists or libvirt_base_stat.stat.checksum != libvirt_expected_digest
+  block:
+    - name: 下载 qcow2 到临时文件
+      ansible.builtin.get_url:
+        url: "{{ libvirt_image_index_url }}{{ libvirt_image_filename }}"
+        dest: "{{ libvirt_base_image }}.partial"
+        mode: "0644"
+        force: true
+      retries: 3
+      delay: 5
+      register: libvirt_image_download
+      until: libvirt_image_download is succeeded
+
+    - name: 计算临时文件摘要
+      ansible.builtin.stat:
+        path: "{{ libvirt_base_image }}.partial"
+        checksum_algorithm: "{{ libvirt_digest_algorithm }}"
+      register: libvirt_partial_stat
+
+    - name: 摘要不符则拒绝，并删除临时文件
+      when: libvirt_partial_stat.stat.checksum != libvirt_expected_digest
+      block:
+        - name: 删除摘要不符的临时文件
+          ansible.builtin.file:
+            path: "{{ libvirt_base_image }}.partial"
+            state: absent
+
+        - name: 报告摘要不符
+          ansible.builtin.fail:
+            msg: >-
+              {{ libvirt_image_filename }} {{ libvirt_digest_algorithm }} 不符。
+              期望 {{ libvirt_expected_digest }}，实际 {{ libvirt_partial_stat.stat.checksum }}。
+
+    - name: 校验通过后替换基镜像
+      ansible.builtin.command:
+        argv:
+          - mv
+          - -f
+          - "{{ libvirt_base_image }}.partial"
+          - "{{ libvirt_base_image }}"
+      changed_when: true
+
+- name: 远程基镜像保持不可写
+  when: libvirt_image_source != 'local-manifest'
+  ansible.builtin.file:
+    path: "{{ libvirt_base_image }}"
+    mode: "0444"

@@ -1,0 +1,10 @@
+---
+# tasks file for btrfs
+- name: 渲染 btrfsmaintenance 配置
+  ansible.builtin.template:
+    src: btrfsmaintenance.j2
+    dest: /etc/sysconfig/btrfsmaintenance
+    owner: root
+    group: root
+    mode: "0644"
+  notify: "restart btrfsmaintenance"

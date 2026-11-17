@@ -1,0 +1,6 @@
+# Fedora 39 将 exa 移除了
+# 所以我们在这里要先卸载 exa
+- name: 卸载 exa
+  ansible.builtin.dnf:
+    name: exa
+    state: absent

@@ -1,0 +1,16 @@
+---
+- name: 派生国内镜像选择
+  ansible.builtin.set_fact:
+    pve_init_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+
+- name: 跳过非 Debian 的 PVE 初始化
+  ansible.builtin.debug:
+    msg: 跳过 Debian 底座专用的 PVE 初始化
+  when: ansible_facts['distribution'] != 'Debian'
+
+- name: Debian 底座的 PVE 初始化
+  become: true
+  when: ansible_facts['distribution'] == 'Debian'
+  block:
+    - name: 执行 PVE 初始化
+      ansible.builtin.include_tasks: debian.yml

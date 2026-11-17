@@ -1,0 +1,10 @@
+---
+# 用目标版本渲染 APT 源：通过 include_role vars 覆盖 debian_repo 的目标版本变量，
+# 完全复用 debian_repo 的模板。
+# 不再 set_fact 覆写 ansible_facts，避免污染 play 级全局状态。
+- name: 用目标版本渲染 APT 源
+  ansible.builtin.include_role:
+    name: misaka.os_base.debian_repo
+  vars:
+    debian_repo_target_codename: "{{ debian_dist_upgrade_target_codename }}"
+    debian_repo_target_major_version: "{{ debian_dist_upgrade_target_version }}"

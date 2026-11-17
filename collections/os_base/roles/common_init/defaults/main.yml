@@ -1,0 +1,10 @@
+---
+# 清理防火墙,也许会有副作用,所以默认关闭
+common_init_clear_firewall: false
+
+# 容器类虚拟化类型,这些环境无独立内核
+common_init_container_types:
+  - docker
+  - podman
+  - lxc
+  - containerd

@@ -1,0 +1,30 @@
+# Debian 源设置
+# 目标版本渲染契约:默认渲染当前系统版本;
+# 其他角色可 include_role 本角色并用 vars 覆盖这两个变量,
+# 以实现跨版本渲染 (如发行版升级前渲染目标版本的源)
+debian_repo_target_codename: "{{ ansible_facts['distribution_release'] }}"
+debian_repo_target_major_version: "{{ ansible_facts['distribution_major_version'] }}"
+debian_repo_apt_mirror: "deb.debian.org"
+debian_repo_apt_security_mirror: "security.debian.org"
+debian_repo_apt_mirror_cn: "mirrors.tencent.com"
+debian_repo_enable_testing: false
+debian_repo_enable_unstable: false
+debian_repo_set_apt_src_repo: false
+# 同步了 Fedora 仓库的镜像站
+debian_repo_mirror_list:
+  # 企业镜像站扛把子
+  - mirrors.aliyun.com
+  - mirrors.tencent.com
+  - mirrors.cloud.tencent.com
+  - mirrors.163.com
+  - mirrors.huaweicloud.com
+  # 高校镜像站
+  - mirrors.ustc.edu.cn
+  - mirrors.tuna.tsinghua.edu.cn
+  - mirrors.sustech.edu.cn
+  - mirrors.bfsu.edu.cn
+  # - mirror.nyist.edu.cn
+  # - mirrors.nju.edu.cn
+  # - mirror.lzu.edu.cn
+  # 高校联合 302 跳转
+  - mirrors.cernet.edu.cn

@@ -1,0 +1,9 @@
+---
+# 下载阶段的 --releasever=45 会解析 repo 配置内的 $releasever。
+# 国内先重渲目标版本 mirrorlist，重启后由 post 阶段识别新布局并迁移。
+- name: 为国内主机准备 Fedora 45 的 mirrorlist
+  when: fedora_dist_upgrade_use_cn_mirror
+  ansible.builtin.include_role:
+    name: misaka.os_base.fedora_repo
+  vars:
+    fedora_repo_target_major_version: "45"

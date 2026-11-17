@@ -1,0 +1,83 @@
+---
+# 校验 docker 角色（Debian 路径）产出的 end-state
+# 角色约束:绝不重启 docker 服务,仅保证开机自启。
+# 因此 Dockerfile 保留 policy-rc.d,安装阶段服务不会拉起;
+# 此处在 molecule 容器中显式启动一次做端到端冒烟,不违反生产环境约束。
+- name: 校验 Docker 安装结果
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: 断言 Docker CE 套件均已通过 dpkg 安装
+      ansible.builtin.command: >-  # noqa: command-instead-of-module
+        dpkg-query -W -f='${Status} ${Version}\n' {{ item }}
+      loop:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-compose-plugin
+        - docker-buildx-plugin
+      register: docker_molecule_dpkg
+      changed_when: false
+      failed_when: "'install ok installed' not in docker_molecule_dpkg.stdout"
+
+    - name: 断言 Docker 服务已设置开机自启
+      ansible.builtin.command: systemctl is-enabled docker  # noqa: command-instead-of-module
+      register: docker_molecule_enabled
+      changed_when: false
+      failed_when: docker_molecule_enabled.stdout != 'enabled'
+
+    - name: 校验 daemon.json 已渲染
+      ansible.builtin.stat:
+        path: /etc/docker/daemon.json
+      register: docker_molecule_daemon_json
+
+    - name: 断言 daemon.json 存在
+      ansible.builtin.assert:
+        that:
+          - docker_molecule_daemon_json.stat.exists
+        fail_msg: /etc/docker/daemon.json 未生成
+
+    - name: 读取 daemon.json 内容
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: docker_molecule_daemon_raw
+
+    - name: 断言 daemon.json 为合法 JSON
+      ansible.builtin.assert:
+        that:
+          - (docker_molecule_daemon_raw.content | b64decode | from_json) is mapping
+        fail_msg: /etc/docker/daemon.json 不是合法 JSON
+        success_msg: /etc/docker/daemon.json 校验通过
+
+    - name: 校验 systemd drop-in 已渲染
+      ansible.builtin.stat:
+        path: /etc/systemd/system/docker.service.d/90-no-args.conf
+      register: docker_molecule_drop_in
+
+    - name: 断言 docker.service drop-in 存在
+      ansible.builtin.assert:
+        that:
+          - docker_molecule_drop_in.stat.exists
+        fail_msg: /etc/systemd/system/docker.service.d/90-no-args.conf 未生成
+
+    # 角色只 enable 不 start(生产环境禁止重启 docker);
+    # molecule 容器无此约束,显式启动以加载 daemon.json 做真实冒烟
+    - name: 启动 Docker 服务用于冒烟验证
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+
+    - name: 断言 Docker 服务处于运行状态
+      ansible.builtin.command: systemctl is-active docker  # noqa: command-instead-of-module
+      register: docker_molecule_active
+      changed_when: false
+      failed_when: docker_molecule_active.stdout != 'active'
+
+    # 冒烟:daemon 能响应 CLI,说明 daemon.json/drop-in 均可被 dockerd 接受
+    - name: Docker info 冒烟验证
+      ansible.builtin.command: docker info
+      register: docker_molecule_info
+      retries: 3
+      delay: 5
+      until: docker_molecule_info.rc == 0
+      changed_when: false

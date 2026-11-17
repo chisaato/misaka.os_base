@@ -1,0 +1,232 @@
+---
+- name: 要求清单含域名、清单路径与运行标识
+  ansible.builtin.assert:
+    that:
+      - item.domain is defined
+      - item.manifest is defined
+      - item.run_id is defined
+      - item.run_id is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - item.domain is match('^mol-[A-Za-z0-9._-]+$')
+      - item.manifest is match('^' ~ libvirt_cache_root ~ '/runs/' ~ item.run_id ~ '/[^/]+/manifest\\.yml$')
+    fail_msg: "instance config 条目缺少可校验的 domain/manifest/run_id，拒绝删除：{{ item }}"
+
+- name: 确认清单文件存在且不是符号链接
+  ansible.builtin.stat:
+    path: "{{ item.manifest }}"
+  register: libvirt_manifest_stat
+
+- name: 拒绝缺失或被替换成符号链接的清单
+  ansible.builtin.assert:
+    that:
+      - libvirt_manifest_stat.stat.exists
+      - not libvirt_manifest_stat.stat.islnk
+      - libvirt_manifest_stat.stat.isreg
+    fail_msg: "清单 {{ item.manifest }} 不存在或不是普通文件，拒绝删除"
+
+- name: 读取所有权清单
+  ansible.builtin.set_fact:
+    libvirt_manifest: "{{ lookup('file', item.manifest) | from_yaml }}"
+
+- name: 清单必须与 instance config 一致且路径落在本次运行目录
+  ansible.builtin.assert:
+    that:
+      - libvirt_manifest.schema | int == 1
+      - libvirt_manifest.owner == 'misaka-molecule-libvirt'
+      - libvirt_manifest.run_id == item.run_id
+      - libvirt_manifest.domain == item.domain
+      - libvirt_manifest.uri == libvirt_uri
+      - libvirt_manifest.overlay is match('^' ~ libvirt_cache_root ~ '/runs/' ~ item.run_id ~ '/[^/]+/overlay\\.qcow2$')
+      - libvirt_manifest.seed is match('^' ~ libvirt_cache_root ~ '/runs/' ~ item.run_id ~ '/[^/]+/seed\\.iso$')
+      - libvirt_manifest.nvram is match('^' ~ libvirt_cache_root ~ '/runs/' ~ item.run_id ~ '/[^/]+/nvram\\.fd$')
+      - libvirt_manifest.serial_log is match('^' ~ libvirt_cache_root ~ '/runs/' ~ item.run_id ~ '/[^/]+/serial\\.log$')
+      - libvirt_manifest.base_image is not match('^' ~ libvirt_cache_root ~ '/runs/')
+      - libvirt_manifest.overlay != libvirt_manifest.base_image
+      - libvirt_manifest.seed != libvirt_manifest.base_image
+    fail_msg: "所有权清单与 instance config 不一致，拒绝删除 {{ item.domain }}"
+
+- name: 拒绝通过父目录符号链接绕过运行目录边界
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        from pathlib import Path
+        manifest = json.loads(sys.argv[1])
+        for key in ['overlay','seed','nvram','serial_log']:
+            path = Path(manifest[key])
+            assert path.resolve() == path, f'{key} 不是规范路径或含符号链接'
+        print('canonical paths verified')
+      - "{{ libvirt_manifest | to_json }}"
+  changed_when: false
+
+- name: 读取域 XML
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - dumpxml
+      - "{{ libvirt_manifest.domain }}"
+  register: libvirt_domain_xml
+  changed_when: false
+  failed_when: libvirt_domain_xml.rc not in [0, 1]
+
+- name: 从域 XML 取出磁盘 source
+  when: libvirt_domain_xml.rc == 0
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import sys
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(sys.stdin.read())
+        sources = []
+        for disk in root.findall("./devices/disk"):
+            source = disk.find("source")
+            if source is not None and source.get("file"):
+                sources.append(source.get("file"))
+        print("\n".join(sources))
+  args:
+    stdin: "{{ libvirt_domain_xml.stdout }}"
+  register: libvirt_domain_sources
+  changed_when: false
+
+- name: 域必须带本次运行标记且磁盘 source 与清单一致
+  when: libvirt_domain_xml.rc == 0
+  ansible.builtin.assert:
+    that:
+      - libvirt_manifest.run_id in libvirt_domain_xml.stdout
+      - ('<misaka:managed>true</misaka:managed>' in libvirt_domain_xml.stdout)
+        or ('<managed>true</managed>' in libvirt_domain_xml.stdout)
+      - libvirt_domain_sources.stdout_lines | sort == [libvirt_manifest.overlay, libvirt_manifest.seed] | sort
+      - libvirt_manifest.base_image not in libvirt_domain_sources.stdout_lines
+      - "'pflash' in libvirt_domain_xml.stdout"
+      - libvirt_manifest.nvram in libvirt_domain_xml.stdout
+    fail_msg: >-
+      域 {{ libvirt_manifest.domain }} 缺少本次运行标记，或磁盘 source
+      {{ libvirt_domain_sources.stdout_lines | default([]) }}
+      与清单 overlay/seed 不一致，拒绝销毁
+
+- name: 销毁瞬态域
+  when: libvirt_domain_xml.rc == 0
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - destroy
+      - "{{ libvirt_manifest.domain }}"
+  register: libvirt_domain_destroy
+  changed_when: libvirt_domain_destroy.rc == 0
+  failed_when: >-
+    libvirt_domain_destroy.rc != 0
+    and 'failed to get domain' not in (libvirt_domain_destroy.stderr | lower)
+    and 'Domain not found' not in libvirt_domain_destroy.stderr
+
+- name: 确认域已不存在
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - domstate
+      - "{{ libvirt_manifest.domain }}"
+  register: libvirt_domain_gone
+  changed_when: false
+  failed_when: libvirt_domain_gone.rc == 0
+
+- name: 创建私有持久证据根目录
+  ansible.builtin.file:
+    path: "{{ libvirt_evidence_root }}"
+    state: directory
+    mode: "0700"
+
+- name: 为本轮保留可读的诊断目录
+  become: true
+  ansible.builtin.file:
+    path: "{{ libvirt_evidence_root }}/{{ item.run_id }}/{{ libvirt_manifest.overlay | dirname | basename }}"
+    state: directory
+    owner: "{{ lookup('env', 'USER') }}"
+    mode: "0700"
+
+- name: 在删除运行目录前归档清单和域 XML
+  ansible.builtin.copy:
+    dest: "{{ libvirt_evidence_root }}/{{ item.run_id }}/{{ libvirt_manifest.overlay | dirname | basename }}/{{ libvirt_evidence_file.name }}"
+    content: "{{ libvirt_evidence_file.content }}"
+    mode: "0600"
+  loop:
+    - name: manifest.yml
+      content: "{{ libvirt_manifest | to_nice_yaml }}"
+    - name: domain.xml
+      content: "{{ libvirt_domain_xml.stdout | default('') }}"
+  loop_control:
+    loop_var: libvirt_evidence_file
+    label: "{{ libvirt_evidence_file.name }}"
+
+- name: 检查串口日志是否存在
+  become: true
+  ansible.builtin.stat:
+    path: "{{ libvirt_manifest.serial_log }}"
+  register: libvirt_serial_evidence
+
+- name: 停机后归档完整串口日志并交给当前用户读取
+  when: libvirt_serial_evidence.stat.exists
+  become: true
+  ansible.builtin.copy:
+    src: "{{ libvirt_manifest.serial_log }}"
+    remote_src: true
+    dest: "{{ libvirt_evidence_root }}/{{ item.run_id }}/{{ libvirt_manifest.overlay | dirname | basename }}/serial.log"
+    owner: "{{ lookup('env', 'USER') }}"
+    mode: "0600"
+
+- name: 删除清单点名的 overlay
+  ansible.builtin.file:
+    path: "{{ libvirt_manifest.overlay }}"
+    state: absent
+
+- name: 删除清单点名的 seed
+  ansible.builtin.file:
+    path: "{{ libvirt_manifest.seed }}"
+    state: absent
+
+- name: 删除清单点名的 NVRAM
+  ansible.builtin.file:
+    path: "{{ libvirt_manifest.nvram }}"
+    state: absent
+
+- name: 删除清单点名的串口日志
+  ansible.builtin.file:
+    path: "{{ libvirt_manifest.serial_log }}"
+    state: absent
+
+- name: 拒绝删除运行目录以外的实例目录
+  ansible.builtin.assert:
+    that:
+      - (libvirt_manifest.overlay | dirname) is match('^' ~ libvirt_cache_root ~ '/runs/' ~ item.run_id ~ '/[^/]+$')
+    fail_msg: "实例目录越界，拒绝删除 {{ libvirt_manifest.overlay | dirname }}"
+
+- name: 删除本次运行的实例目录
+  ansible.builtin.file:
+    path: "{{ libvirt_manifest.overlay | dirname }}"
+    state: absent
+
+- name: 运行目录空了就删掉运行根
+  ansible.builtin.command:
+    argv:
+      - find
+      - "{{ libvirt_cache_root }}/runs/{{ item.run_id }}"
+      - -mindepth
+      - "1"
+      - -print
+      - -quit
+  register: libvirt_run_leftover
+  changed_when: false
+  failed_when: false
+
+- name: 删除空的本次运行根目录
+  when: libvirt_run_leftover.rc == 0 and libvirt_run_leftover.stdout == ''
+  ansible.builtin.file:
+    path: "{{ libvirt_cache_root }}/runs/{{ item.run_id }}"
+    state: absent

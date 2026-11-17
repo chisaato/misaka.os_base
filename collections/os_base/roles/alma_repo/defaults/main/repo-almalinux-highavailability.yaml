@@ -1,0 +1,19 @@
+alma_repo_highavailability_repos:
+  - repo_id: highavailability
+    repo_name: AlmaLinux $releasever - HighAvailability
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/HighAvailability/$basearch/os/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/highavailability
+  - repo_id: highavailability-debuginfo
+    repo_name: AlmaLinux $releasever - HighAvailability - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/HighAvailability/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/highavailability-debug
+  - repo_id: highavailability-source
+    repo_name: AlmaLinux $releasever - HighAvailability - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/HighAvailability/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/highavailability-source

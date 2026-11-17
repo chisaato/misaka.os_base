@@ -1,0 +1,28 @@
+---
+- name: 恢复场景先建立 Fedora 43 prepared 基线
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 安装独立 EFI 验证工具
+      ansible.builtin.dnf:
+        name: efibootmgr
+        state: present
+      register: recovery_efi_install
+      retries: 3
+      delay: 5
+      until: recovery_efi_install is succeeded
+
+    - name: 准备当前版本但不下载或重启离线事务
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_dist_upgrade
+      vars:
+        fedora_dist_upgrade_until: prepared
+        fedora_dist_upgrade_tested_profile:
+          image: Fedora-Cloud-Base-Generic-43
+          memory_mib: 3072
+          disk_gib: 20
+          repos: fedora-metalink
+          third_party: false
+          load: none
+          profile: empty-uefi-cloud-recovery

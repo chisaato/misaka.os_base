@@ -1,0 +1,52 @@
+# 主源与更新源
+Types: deb
+URIs: https://{{ debian_repo_apt_mirror }}/debian/
+Suites: {{ debian_repo_target_codename }} {{ debian_repo_target_codename }}-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+# 安全源
+Types: deb
+URIs: https://{{ debian_repo_apt_security_mirror }}/debian-security
+Suites: {{ debian_repo_target_codename }}-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+{% if debian_repo_enable_testing == true %}
+# 测试源
+Types: deb
+URIs: https://{{ debian_repo_apt_mirror }}/debian/
+Suites: testing
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: https://{{ debian_repo_apt_security_mirror }}/debian-security
+Suites: testing-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+{% endif %}
+
+{% if debian_repo_enable_unstable == true %}
+# 不稳定源 (Sid)
+Types: deb
+URIs: https://{{ debian_repo_apt_mirror }}/debian/
+Suites: unstable
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+{% endif %}
+
+{% if debian_repo_set_apt_src_repo == true %}
+# 源码源 (deb-src)
+Types: deb-src
+URIs: https://{{ debian_repo_apt_mirror }}/debian/
+Suites: {{ debian_repo_target_codename }} {{ debian_repo_target_codename }}-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb-src
+URIs: https://{{ debian_repo_apt_security_mirror }}/debian-security
+Suites: {{ debian_repo_target_codename }}-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+{% endif %}

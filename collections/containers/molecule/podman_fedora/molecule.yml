@@ -1,0 +1,28 @@
+---
+# Podman 场景：Fedora 42，podman 路径（podman 驱动 + 自建 systemd 镜像）
+dependency:
+  name: galaxy
+driver:
+  name: podman
+platforms:
+  - name: podman-fedora42
+    image: registry.fedoraproject.org/fedora:42
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    privileged: true
+    systemd: always
+    # molecule podman 驱动默认用 bash sleep 循环覆盖镜像 CMD,
+    # 显式指定让 systemd 真正作为 PID 1
+    command: [/sbin/init]
+    security_opts:
+      - label=disable
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_become: true
+  log: true
+  env:
+    # 防止绕过 justfile 直跑 molecule 时丢失姊妹 collection 解析路径
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../.dev
+verifier:
+  name: ansible

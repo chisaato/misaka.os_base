@@ -1,0 +1,55 @@
+---
+- name: 直接核对 Fedora 44 与 marker，不运行升级角色
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 升级后必须仍能读取 EFI 变量
+      ansible.builtin.command:
+        argv: ["efibootmgr", "-v"]
+      register: fedora_verify_efi
+      changed_when: false
+    - name: 读取 os-release
+      ansible.builtin.slurp:
+        src: /etc/os-release
+      register: fedora_verify_osrelease
+
+    - name: 读取 marker
+      ansible.builtin.slurp:
+        src: /var/lib/misaka/dist-upgrade/fedora.json
+      register: fedora_verify_marker_raw
+
+    - name: 读取当前 boot_id 与内核
+      ansible.builtin.command:
+        argv: ["bash", "-lc", "cat /proc/sys/kernel/random/boot_id; uname -r; rpm -q fedora-release-common; dnf5 offline status; test -d /sys/firmware/efi"]
+      register: fedora_verify_facts
+      changed_when: false
+
+    - name: 列出归档
+      ansible.builtin.find:
+        paths: /var/lib/misaka/dist-upgrade/history
+        patterns: "*.json"
+      register: fedora_verify_history
+
+    - name: 断言升级结果与 UEFI
+      vars:
+        fedora_verify_marker: "{{ fedora_verify_marker_raw.content | b64decode | from_json }}"
+        fedora_verify_os: "{{ fedora_verify_osrelease.content | b64decode }}"
+      ansible.builtin.assert:
+        that:
+          - "'VERSION_ID=44' in fedora_verify_os"
+          - fedora_verify_marker.schema | int == 1
+          - fedora_verify_marker.stage == 'completed'
+          - fedora_verify_marker.target.release | string == '44'
+          - fedora_verify_facts.stdout is search('\\.fc44\\.')
+          - fedora_verify_facts.stdout is search('fedora-release-common-44')
+          - fedora_verify_facts.rc == 0
+          - fedora_verify_marker.evidence.verify.kernel is search('\\.fc44\\.')
+          - fedora_verify_facts.stdout_lines[0] != ((fedora_verify_marker.evidence.reboot | default({})).requested_boot_id | default(''))
+          - fedora_verify_history.matched | int >= 1
+          - fedora_verify_marker.tested_profile.load == 'none'
+          - "'BootCurrent:' in fedora_verify_efi.stdout"
+        fail_msg: >-
+          升级核验失败。os={{ fedora_verify_os }}
+          marker={{ fedora_verify_marker }}
+          facts={{ fedora_verify_facts.stdout }}

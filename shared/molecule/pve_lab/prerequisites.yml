@@ -1,0 +1,43 @@
+---
+- name: 按真实 pve8to9 警告修正空载 VM 标准前置项
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 限制为本实验唯一 VirtIO 接口与 Debian 12
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution_major_version'] | int == 12
+          - ansible_facts['default_ipv4']['interface'] == 'eth0'
+
+    - name: 检查旧规则是否为空文件
+      ansible.builtin.stat:
+        path: /etc/udev/rules.d/70-persistent-net.rules
+      register: pve_lab_old_rules
+
+    - name: 不丢弃任何实际 NIC 规则
+      ansible.builtin.assert:
+        that: not pve_lab_old_rules.stat.exists or pve_lab_old_rules.stat.size | int == 0
+
+    - name: 用 systemd link 保留当前 eth0 名称（仅单 VirtIO NIC 实验）
+      ansible.builtin.copy:
+        dest: /etc/systemd/network/10-misaka-pve-lab.link
+        mode: "0644"
+        content: |
+          [Match]
+          Driver=virtio_net
+          [Link]
+          NamePolicy=
+          Name=eth0
+
+    - name: 移除无实际规则的旧空文件
+      ansible.builtin.file:
+        path: /etc/udev/rules.d/70-persistent-net.rules
+        state: absent
+
+    - name: 按 checker 建议让 GRUB 包维护 removable 启动路径
+      ansible.builtin.debconf:
+        name: grub-efi-amd64
+        question: grub2/force_efi_extra_removable
+        value: "true"
+        vtype: boolean

@@ -1,0 +1,13 @@
+---
+- name: 释放本次 token 的目录锁
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} lock-release
+    --root {{ fedora_dist_upgrade_state_dir }}
+    --token {{ fedora_dist_upgrade_token }}
+  register: fedora_dist_upgrade_lock_release
+  changed_when: false
+
+- name: 清除持锁标志
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_lock_held: false

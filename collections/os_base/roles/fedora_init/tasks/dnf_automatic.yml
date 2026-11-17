@@ -1,0 +1,19 @@
+---
+- name: 安装自动更新工具
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - dnf-automatic
+    state: present
+  register: fedora_init_dnf_automatic_install
+  retries: 3
+  delay: 5
+  until: fedora_init_dnf_automatic_install is success
+
+- name: 渲染自动更新配置文件
+  become: true
+  ansible.builtin.template:
+    mode: "0644"
+    src: automatic.conf.j2
+    dest: /etc/dnf/automatic.conf
+  notify: "restart dnf-automatic"

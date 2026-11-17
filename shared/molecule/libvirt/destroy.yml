@@ -1,0 +1,65 @@
+---
+# 只销毁当前 instance config 准确列出、且域元数据标记匹配的 domain，
+# 以及清单中位于本次运行目录内的 overlay / seed。
+# 不使用 undefine --remove-all-storage，不通配删除，不清理宿主原有虚拟机，不碰基镜像。
+- name: Destroy libvirt instances
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    libvirt_support_dir: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/../../shared/molecule/libvirt"
+  tasks:
+    - name: 载入 libvirt 生命周期默认值
+      ansible.builtin.include_vars:
+        file: "{{ libvirt_support_dir }}/defaults.yml"
+
+    - name: 用场景 driver.libvirt 覆盖默认值
+      ansible.builtin.set_fact:
+        "{{ libvirt_override_item.key }}": "{{ libvirt_override_item.value }}"
+      loop: "{{ (molecule_yml.driver.libvirt | default({}, true) | dict2items) }}"
+      loop_control:
+        loop_var: libvirt_override_item
+        label: "{{ libvirt_override_item.key }}"
+
+    - name: 读取 instance config
+      ansible.builtin.stat:
+        path: "{{ molecule_instance_config }}"
+      register: libvirt_instance_config_stat
+
+    - name: 解析 instance config 列表
+      ansible.builtin.set_fact:
+        libvirt_instance_config: >-
+          {{
+            (
+              (lookup('file', molecule_instance_config) | from_yaml)
+              if (
+                libvirt_instance_config_stat.stat.exists
+                and (lookup('file', molecule_instance_config) | trim | length) > 0
+              )
+              else []
+            )
+          }}
+
+    - name: 非列表的 instance config 视为空
+      when: libvirt_instance_config is not sequence or libvirt_instance_config is string
+      ansible.builtin.set_fact:
+        libvirt_instance_config: []
+
+    - name: 按清单销毁每个本运行创建的实例
+      ansible.builtin.include_tasks:
+        file: "{{ libvirt_support_dir }}/destroy_instance.yml"
+      loop: "{{ libvirt_instance_config }}"
+      loop_control:
+        label: "{{ item.instance | default('unknown') }}"
+
+    - name: 清理带本场景标记但没有清单的孤儿域
+      ansible.builtin.include_tasks: "{{ libvirt_support_dir }}/destroy_orphans.yml"
+
+    - name: 清空 Molecule instance config
+      ansible.builtin.copy:
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"
+        content: |
+          # Molecule managed
+
+          []

@@ -1,0 +1,41 @@
+---
+- name: 派生是否使用国内镜像
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+
+- name: 解析暂停点
+  ansible.builtin.include_tasks: resolve_until.yml
+
+- name: 生成本次运行的锁 token
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_token: "{{ lookup('pipe', 'python3 -c \"import secrets; print(secrets.token_hex(8))\"') }}"
+    fedora_dist_upgrade_controller: "{{ lookup('env', 'USER') | default('ansible', true) }}@{{ lookup('pipe', 'hostname') }}"
+    fedora_dist_upgrade_stop: false
+    fedora_dist_upgrade_step_index: 0
+    fedora_dist_upgrade_state_bin: "{{ role_path }}/../dist_upgrade_state/files/dist_upgrade_state.py"
+
+- name: 只读获取用于锁身份的 boot_id
+  ansible.builtin.slurp:
+    src: /proc/sys/kernel/random/boot_id
+  register: fedora_dist_upgrade_lock_boot
+
+- name: 初始化锁身份而不预先探测事务
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_observed:
+      boot_id: "{{ fedora_dist_upgrade_lock_boot.content | b64decode | trim }}"
+
+- name: 在事务探测之前取得 advance 或 abandon 锁
+  when: fedora_dist_upgrade_action != 'status'
+  ansible.builtin.include_tasks: lock.yml
+
+- name: 按阶段向前推进
+  block:
+    - name: 执行下一阶段
+      ansible.builtin.include_tasks: step.yml
+      when: not fedora_dist_upgrade_stop | bool
+  always:
+    - name: 正常退出或任务失败时都释放本次锁
+      when:
+        - fedora_dist_upgrade_action != 'status'
+        - fedora_dist_upgrade_lock_held | default(false) | bool
+      ansible.builtin.include_tasks: unlock.yml

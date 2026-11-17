@@ -1,0 +1,10 @@
+---
+- name: 使用真实 cache 插件写入旧 facts
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: 缓存明确的 Fedora 43 事实
+      ansible.builtin.set_fact:
+        distribution: Fedora
+        distribution_major_version: "43"
+        cacheable: true

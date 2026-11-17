@@ -1,0 +1,91 @@
+---
+# 重启只发生在 verify。先记录 boot_id，再 reboot，重连后确认 boot_id 已变化。
+- name: 校验 Debian 13 虚拟机
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 断言 SSH 登录后的发行版
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - (ansible_facts['distribution_major_version'] | int) == 13
+          - ansible_facts['virtualization_type'] == 'kvm'
+          - ansible_facts['virtualization_role'] == 'guest'
+        fail_msg: >-
+          期望 Debian 13 kvm guest，实际
+          {{ ansible_facts['distribution'] }}
+          {{ ansible_facts['distribution_major_version'] }}
+          {{ ansible_facts['virtualization_type'] }}/{{ ansible_facts['virtualization_role'] }}
+
+    - name: 确认是 UEFI 而不是 SeaBIOS
+      ansible.builtin.stat:
+        path: /sys/firmware/efi
+      register: vm_smoke_efi
+
+    - name: 云镜像没有 efibootmgr，直接列出 EFI 变量
+      ansible.builtin.command:
+        argv:
+          - find
+          - /sys/firmware/efi/efivars
+          - -mindepth
+          - "1"
+          - -maxdepth
+          - "1"
+          - -printf
+          - "%f\n"
+      register: vm_smoke_efivars
+      changed_when: false
+
+    - name: UEFI 运行态证据必须存在
+      ansible.builtin.assert:
+        that:
+          - vm_smoke_efi.stat.isdir
+          - vm_smoke_efivars.stdout_lines | length > 0
+          - vm_smoke_efivars.stdout is search('Boot')
+        fail_msg: "EFI 变量目录不可读：{{ vm_smoke_efivars.stdout | default('') }} {{ vm_smoke_efivars.stderr | default('') }}"
+
+    - name: 断言冒烟标记仍在
+      ansible.builtin.slurp:
+        src: /etc/misaka-molecule/vm-smoke
+      register: vm_smoke_marker
+
+    - name: 标记内容必须是 converge 写入的那一项
+      ansible.builtin.assert:
+        that:
+          - "'marker=vm_smoke' in (vm_smoke_marker.content | b64decode)"
+
+    - name: 读取重启前 boot_id
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: vm_smoke_boot_before
+
+    - name: 记下重启前 boot_id
+      ansible.builtin.set_fact:
+        vm_smoke_boot_id_before: "{{ vm_smoke_boot_before.content | b64decode | trim }}"
+
+    - name: 重启虚拟机
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        connect_timeout: 10
+        post_reboot_delay: 10
+
+    - name: 重连后重新采集事实
+      ansible.builtin.setup:
+
+    - name: 读取重启后 boot_id
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: vm_smoke_boot_after
+
+    - name: 断言重启后仍是 Debian 13 kvm guest 且 boot_id 已变化
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - (ansible_facts['distribution_major_version'] | int) == 13
+          - ansible_facts['virtualization_type'] == 'kvm'
+          - (vm_smoke_boot_after.content | b64decode | trim) != vm_smoke_boot_id_before
+          - (vm_smoke_boot_after.content | b64decode | trim) | length > 0
+        fail_msg: >-
+          重启后校验失败。before={{ vm_smoke_boot_id_before }}
+          after={{ vm_smoke_boot_after.content | b64decode | trim }}

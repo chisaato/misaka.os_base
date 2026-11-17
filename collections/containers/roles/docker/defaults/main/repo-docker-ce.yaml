@@ -1,0 +1,21 @@
+docker_ce_repos:
+  # repo_mirrorlist 只供 Fedora DNF5 override 消费；.repo 定义始终使用官方 baseurl。
+  # 稳定版
+  - repo_id: docker-ce-stable
+    repo_name: Docker CE Stable - $basearch
+    repo_baseurl: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/$releasever/$basearch/stable
+    repo_enabled: 1
+    repo_gpgkey: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg
+    repo_mirrorlist: file:///etc/dnf/mirrorlist/docker-ce-stable.mirrorlist
+  - repo_id: docker-ce-stable-debuginfo
+    repo_name: Docker CE Stable - Debuginfo $basearch
+    repo_baseurl: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/$releasever/debug-$basearch/stable
+    repo_enabled: 0
+    repo_gpgkey: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg
+    repo_mirrorlist: file:///etc/dnf/mirrorlist/docker-ce-stable-debuginfo.mirrorlist
+  - repo_id: docker-ce-stable-source
+    repo_name: Docker CE Stable - Sources
+    repo_baseurl: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/$releasever/source/stable
+    repo_enabled: 0
+    repo_gpgkey: https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg
+    repo_mirrorlist: file:///etc/dnf/mirrorlist/docker-ce-stable-source.mirrorlist

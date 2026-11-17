@@ -1,0 +1,22 @@
+{% for repo in fedora_repo_base_repos %}
+[{{ repo.repo_id }}]
+name={{ repo.repo_name }}
+{% if fedora_repo_use_cn_mirror %}
+{# 国内的时候,写入 baseurl 并注释 metalink #}
+baseurl={{ repo.repo_baseurl }}
+#metalink={{ repo.repo_metalink }}
+{% else %}
+{# 否则写入 metalink 并注释 baseurl #}
+#baseurl={{ repo.repo_baseurl }}
+metalink={{ repo.repo_metalink }}
+{% endif %}
+enabled={{ repo.repo_enabled }}
+countme=1
+metadata_expire=7d
+repo_gpgcheck=0
+type=rpm
+gpgcheck=1
+gpgkey={{ repo.repo_gpgkey }}
+skip_if_unavailable=False
+
+{% endfor %}

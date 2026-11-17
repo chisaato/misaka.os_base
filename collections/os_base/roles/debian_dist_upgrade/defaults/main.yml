@@ -1,0 +1,19 @@
+---
+# 本期仅支持 12→13；目标系统重跑不能漂移到 14。
+debian_dist_upgrade_target_version: "{{ [ansible_facts['distribution_major_version'] | int + 1, 13] | min }}"
+debian_dist_upgrade_target_codename: "{{ debian_dist_upgrade_codename_map[debian_dist_upgrade_target_version | string] }}"
+
+# 升级前当前版本 codename（用于校验收敛）
+debian_dist_upgrade_source_version: "{{ ansible_facts['distribution_major_version'] }}"
+debian_dist_upgrade_source_codename: "{{ ansible_facts['distribution_release'] }}"
+
+# 保留兼容开关；只约束重启，不授予安装许可。显式 until 优先。
+debian_dist_upgrade_skip_reboot: true
+debian_dist_upgrade_action: advance
+# 不设置 until 时始终 downloaded，包括 skip_reboot=false。
+debian_dist_upgrade_until: ""
+debian_dist_upgrade_retries: 3
+debian_dist_upgrade_delay: 10
+debian_dist_upgrade_wait_retries: 720
+debian_dist_upgrade_wait_delay: 10
+debian_dist_upgrade_tested_profile: ""

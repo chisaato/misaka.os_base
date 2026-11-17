@@ -1,0 +1,21 @@
+# 自建 systemd 基础镜像（Fedora）
+# podman build 时 item.image 由 molecule platforms 传入
+FROM {{ item.image }}
+
+ENV container=docker
+
+# systemd 容器运行所需的最小依赖集：
+#   python3/sudo         - ansible 受管端与 become
+#   iproute/procps-ng    - 网络与进程基础工具
+# Fedora 41+ 已切换 dnf5,以下 install/clean 语法均兼容
+RUN dnf -y install \
+        systemd \
+        python3 \
+        sudo \
+        iproute \
+        procps-ng \
+    && dnf clean all \
+# 容器内没有终端,getty 会反复拉起失败,直接 mask
+    && ln -sf /dev/null /etc/systemd/system/getty.target
+
+CMD ["/sbin/init"]

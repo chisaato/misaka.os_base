@@ -1,0 +1,2 @@
+- name: 导入 Fedora 设置 Docker 任务
+  ansible.builtin.include_tasks: docker/fedora.yaml

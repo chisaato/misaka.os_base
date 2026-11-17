@@ -1,0 +1,7 @@
+{# 仅覆盖 docker_ce_repos 中实际定义的 repo id,路径与 id 均来自同一 defaults。 #}
+{% for repo in docker_ce_repos %}
+[{{ repo.repo_id }}]
+baseurl=
+mirrorlist={{ repo.repo_mirrorlist }}
+
+{% endfor %}

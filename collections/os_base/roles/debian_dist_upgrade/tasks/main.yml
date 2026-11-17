@@ -1,0 +1,59 @@
+---
+- name: 不依赖系统 Python 读取发行版身份
+  ansible.builtin.raw: . /etc/os-release; printf '%s\n' "$ID"
+  register: debian_dist_upgrade_platform
+  changed_when: false
+
+- name: 在 Python 可能替换期间只用 raw 观察原 guest worker
+  become: true
+  ansible.builtin.raw: "{{ lookup('file', role_path ~ '/files/observe_job.sh') }}"
+  register: debian_dist_upgrade_raw_worker
+  changed_when: false
+  failed_when: debian_dist_upgrade_raw_worker.rc not in [0, 75]
+  retries: "{{ debian_dist_upgrade_wait_retries if debian_dist_upgrade_action == 'advance' else 0 }}"
+  delay: "{{ debian_dist_upgrade_wait_delay }}"
+  until: debian_dist_upgrade_raw_worker.rc != 75 or debian_dist_upgrade_action == 'status'
+  when: debian_dist_upgrade_platform.stdout | trim == 'debian'
+
+- name: 输出活跃事务的只读状态，不加载正在替换的 Python
+  ansible.builtin.debug:
+    msg: "{{ debian_dist_upgrade_raw_worker.stdout }}"
+  when:
+    - debian_dist_upgrade_platform.stdout | trim == 'debian'
+    - debian_dist_upgrade_raw_worker.rc == 75
+
+- name: Worker 结束后才加载系统 Python 并刷新事实
+  ansible.builtin.setup:
+  when:
+    - debian_dist_upgrade_platform.stdout | trim == 'debian'
+    - debian_dist_upgrade_raw_worker.rc == 0
+
+- name: 跳过非 Debian 系统
+  ansible.builtin.debug:
+    msg: 跳过 Debian 专用升级角色
+  when: debian_dist_upgrade_platform.stdout | trim != 'debian'
+
+- name: Debian 在线分阶段升级
+  become: true
+  when:
+    - debian_dist_upgrade_platform.stdout | trim == 'debian'
+    - ansible_facts['distribution'] | default('') == 'Debian'
+    - debian_dist_upgrade_raw_worker.rc | default(0) == 0
+  block:
+    - name: 检查请求与版本边界
+      ansible.builtin.include_tasks: 00_validate.yml
+
+    - name: 只读探测升级事实
+      ansible.builtin.script:
+        cmd: files/debian_upgrade.py probe
+        executable: /usr/bin/python3
+      register: debian_dist_upgrade_probe
+      changed_when: false
+
+    - name: 输出事实状态
+      ansible.builtin.debug:
+        msg: "{{ debian_dist_upgrade_probe.stdout | from_json }}"
+
+    - name: 显式推进在线升级
+      ansible.builtin.include_tasks: advance.yml
+      when: debian_dist_upgrade_action == 'advance'

@@ -1,0 +1,26 @@
+dependency:
+  name: galaxy
+driver:
+  name: vagrant
+  provider:
+    name: libvirt
+    type: libvirt
+platforms:
+  - name: fedora-38
+    box: fedora/38-cloud-base
+    memory: 2048
+    cpus: 4
+  - name: fedora-39
+    box: fedora/39-cloud-base
+    memory: 2048
+    cpus: 4
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_ssh_user: vagrant
+    ansible_become: true
+  log: true
+  lint:
+    name: ansible-lint
+verifier:
+  name: ansible

@@ -1,0 +1,8 @@
+{% if host_geo.country is defined and host_geo.country == "cn" %}
+{% for docker_ce_mirror_list_item in docker_ce_mirror_list %}
+deb [arch=amd64] https://{{ docker_ce_mirror_list_item }}/docker-ce/linux/debian {{
+ansible_facts['distribution_release'] }} stable
+{% endfor %}
+{% else %}
+deb [arch=amd64] https://download.docker.com/linux/debian {{ ansible_facts['distribution_release'] }} stable
+{% endif %}

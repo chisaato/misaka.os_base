@@ -1,0 +1,238 @@
+---
+- name: 清除上一步留下的 marker 补丁
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_record_intent_set: false
+    fedora_dist_upgrade_record_evidence: {}
+
+- name: 读取发行版与离线事务事实
+  ansible.builtin.script: "{{ role_path }}/files/probe_fedora.py"
+  register: fedora_dist_upgrade_probe
+  changed_when: false
+  become: true
+
+- name: 只保留探测输出里的第一段 JSON
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        decoder = json.JSONDecoder()
+        payload, _ = decoder.raw_decode(sys.stdin.read().lstrip())
+        json.dump(payload, sys.stdout)
+  args:
+    stdin: "{{ fedora_dist_upgrade_probe.stdout }}"
+  register: fedora_dist_upgrade_probe_json
+  changed_when: false
+  delegate_to: localhost
+
+- name: 记下探测结果
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_observed: "{{ fedora_dist_upgrade_probe_json.stdout | from_json }}"
+
+- name: 检查 marker 是否已存在
+  become: true
+  ansible.builtin.stat:
+    path: "{{ fedora_dist_upgrade_state_dir }}/fedora.json"
+  register: fedora_dist_upgrade_marker_stat
+
+- name: 读取 marker
+  become: true
+  when: fedora_dist_upgrade_marker_stat.stat.exists
+  ansible.builtin.slurp:
+    src: "{{ fedora_dist_upgrade_state_dir }}/fedora.json"
+  register: fedora_dist_upgrade_marker_raw
+
+- name: 解析 marker，损坏时不覆盖
+  when: fedora_dist_upgrade_marker_stat.stat.exists
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        raw = sys.stdin.read()
+        try:
+            marker = json.loads(raw)
+            assert marker['schema'] == 1 and marker['family'] == 'fedora'
+            assert marker['operation_id'] and isinstance(marker['seq'], int)
+            assert marker['machine']['id_sha256_16']
+            assert str(marker['target']['release']).isdigit()
+            assert str(marker['source']['release']).isdigit()
+        except (json.JSONDecodeError, KeyError, TypeError, AssertionError):
+            print("corrupt")
+            raise SystemExit
+        sys.stdout.write(raw)
+  args:
+    stdin: "{{ fedora_dist_upgrade_marker_raw.content | b64decode }}"
+  register: fedora_dist_upgrade_marker_parsed
+  changed_when: false
+  failed_when: false
+
+- name: 整理 marker 与发布版本
+  ansible.builtin.include_tasks: load_context.yml
+
+- name: 只读查看 status 锁而不创建目录
+  when: fedora_dist_upgrade_action == 'status'
+  ansible.builtin.include_tasks: status_lock.yml
+
+- name: 把探测结果写到控制机
+  ansible.builtin.copy:
+    dest: "/tmp/opencode/fedora-dist-upgrade-{{ inventory_hostname }}-observed.json"
+    mode: "0600"
+    content: "{{ fedora_dist_upgrade_observed | to_json }}"
+  delegate_to: localhost
+  changed_when: false
+
+- name: 把请求写到控制机
+  ansible.builtin.copy:
+    dest: "/tmp/opencode/fedora-dist-upgrade-{{ inventory_hostname }}-request.json"
+    mode: "0600"
+    content: "{{ fedora_dist_upgrade_request | to_json }}"
+  delegate_to: localhost
+  changed_when: false
+
+- name: 把 marker 写到控制机
+  ansible.builtin.copy:
+    dest: "/tmp/opencode/fedora-dist-upgrade-{{ inventory_hostname }}-marker.json"
+    mode: "0600"
+    content: "{{ fedora_dist_upgrade_marker | to_json if fedora_dist_upgrade_marker else 'null' }}"
+  delegate_to: localhost
+  changed_when: false
+
+- name: 推导下一步
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          'python3',
+          fedora_dist_upgrade_state_bin,
+          'decide',
+          '--observed',
+          '/tmp/opencode/fedora-dist-upgrade-' ~ inventory_hostname ~ '-observed.json',
+          '--request',
+          '/tmp/opencode/fedora-dist-upgrade-' ~ inventory_hostname ~ '-request.json'
+        ]
+        + (
+          [
+            '--marker',
+            '/tmp/opencode/fedora-dist-upgrade-' ~ inventory_hostname ~ '-marker.json'
+          ]
+          if fedora_dist_upgrade_marker else []
+        )
+      }}
+  delegate_to: localhost
+  register: fedora_dist_upgrade_decision_cmd
+  changed_when: false
+
+- name: 记下判定
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_decision: "{{ fedora_dist_upgrade_decision_cmd.stdout | from_json }}"
+
+- name: 对陈旧锁接管留下审计历史
+  when:
+    - fedora_dist_upgrade_took_over | default(false) | bool
+    - fedora_dist_upgrade_decision.ok | bool
+    - fedora_dist_upgrade_marker is mapping
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_decision: "{{ fedora_dist_upgrade_decision | combine({'mutate': true, 'history_result': 'takeover'}) }}"
+    fedora_dist_upgrade_took_over: false
+
+- name: 记录收养人工下载的事实指纹
+  when:
+    - fedora_dist_upgrade_decision.decision == 'adopt'
+    - fedora_dist_upgrade_observed.pending is mapping
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_record_evidence:
+      download:
+        releasever: "{{ fedora_dist_upgrade_observed.pending.releasever }}"
+        pending_sha256: "{{ fedora_dist_upgrade_observed.pending.sha256 }}"
+        adopted_by: manual
+
+- name: 输出当前阶段
+  ansible.builtin.debug:
+    msg:
+      - "action={{ fedora_dist_upgrade_action }} until={{ fedora_dist_upgrade_until_effective }}"
+      - "phase={{ fedora_dist_upgrade_decision.phase }} decision={{ fedora_dist_upgrade_decision.decision }}"
+      - "reason={{ fedora_dist_upgrade_decision.reason }} effects={{ fedora_dist_upgrade_decision.side_effects }}"
+      - "os={{ fedora_dist_upgrade_observed.os }} pending={{ fedora_dist_upgrade_observed.pending }}"
+      - "国内镜像偏好={{ fedora_dist_upgrade_use_cn_mirror }}"
+
+- name: 只读 status 到此为止
+  when: fedora_dist_upgrade_action == 'status'
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_stop: true
+
+- name: 拒绝继续时释放锁并失败
+  when:
+    - fedora_dist_upgrade_action != 'status'
+    - not fedora_dist_upgrade_decision.ok | bool
+  block:
+    - name: 释放目录锁
+      ansible.builtin.include_tasks: unlock.yml
+
+    - name: 拒绝本次 advance
+      ansible.builtin.fail:
+        msg: >-
+          升级被拒绝：{{ fedora_dist_upgrade_decision.reason }}。
+          operation={{ fedora_dist_upgrade_marker.operation_id | default('无') }}。
+          目标冲突或机器身份不符时，只能用 abandon 加精确 operation_id 归档，不会覆盖 marker。
+
+- name: 需要人工处理时停止
+  when:
+    - fedora_dist_upgrade_action != 'status'
+    - fedora_dist_upgrade_decision.decision in ['needs_human', 'reboot_failed']
+  block:
+    - name: 释放目录锁
+      ansible.builtin.include_tasks: unlock.yml
+
+    - name: 停止并说明需要的确认
+      ansible.builtin.fail:
+        msg: >-
+          {{ fedora_dist_upgrade_decision.decision }}：{{ fedora_dist_upgrade_decision.reason }}。
+          不会自动修复 rpm 事务，也不会自动重发 offline reboot。
+          重试重启需要 fedora_dist_upgrade_retry_reboot=true 且
+          fedora_dist_upgrade_retry_confirm={{ fedora_dist_upgrade_marker.operation_id | default('') }}。
+          建议先看 dnf5 offline log --number=-1。
+
+- name: 执行判定给出的副作用
+  when:
+    - not fedora_dist_upgrade_stop | bool
+    - fedora_dist_upgrade_decision.side_effects | length > 0
+  ansible.builtin.include_tasks: "stages/{{ fedora_dist_upgrade_effect }}.yml"
+  loop: "{{ fedora_dist_upgrade_decision.side_effects }}"
+  loop_control:
+    loop_var: fedora_dist_upgrade_effect
+    label: "{{ fedora_dist_upgrade_effect }}"
+
+- name: 记录 marker
+  when:
+    - not fedora_dist_upgrade_stop | bool
+    - fedora_dist_upgrade_decision.mutate | bool
+  ansible.builtin.include_tasks: record.yml
+
+- name: 没有进一步副作用就停止
+  when: fedora_dist_upgrade_decision.side_effects | length == 0
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_stop: true
+
+- name: 本步结束释放目录锁
+  when:
+    - fedora_dist_upgrade_action != 'status'
+    - fedora_dist_upgrade_lock_held | default(false) | bool
+    - fedora_dist_upgrade_stop | bool
+  ansible.builtin.include_tasks: unlock.yml
+
+- name: 累计已经执行的阶段数
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_step_index: "{{ fedora_dist_upgrade_step_index | int + 1 }}"
+
+- name: 拒绝把未到达暂停点的执行报成成功
+  ansible.builtin.assert:
+    that:
+      - fedora_dist_upgrade_stop | bool or fedora_dist_upgrade_step_index | int < 8
+    fail_msg: "八步内未达到暂停点；请检查实时事务证据，不会静默结束。"
+
+- name: 当前步骤完成后再决定是否继续
+  when: not fedora_dist_upgrade_stop | bool
+  ansible.builtin.include_tasks: step.yml

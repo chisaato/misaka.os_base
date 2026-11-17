@@ -1,0 +1,47 @@
+{% macro choose_github_mirror() %}
+    {%- if host_geo.country is defined and host_geo.country == "cn" and zsh_github_repo_mirror_cn | default('') | length > 0 -%}
+        {# 国内走镜像 #}
+        {{- zsh_github_repo_mirror_cn -}}
+    {%- else -%}
+        {# 否则就是 GitHub #}
+        {{- "github.com" -}}
+    {% endif %}
+{% endmacro %}
+{% macro choose_gitlab_mirror() %}
+    {%- set gl_mirror = zsh_gitlab_repo_mirror_cn | default(gitlab_repo_zsh_mirror_cn | default('')) -%}
+    {%- if host_geo.country is defined and host_geo.country == "cn" and gl_mirror | length > 0 -%}
+        {# 国内走代理 #}
+        {{- gl_mirror -}}
+    {%- else -%}
+        {# 否则就是 GitLab #}
+        {{- "gitlab.com" -}}
+    {% endif %}
+{% endmacro %}
+
+{% include "snippets/00-init.zsh" ignore missing %}
+{% include "snippets/alias.zsh" ignore missing %}
+
+{# 从这里开始是语言类 #}
+{# 单独做一个 asdf 的来管理这些版本 #}
+{# {% include "snippets/asdf.zsh" ignore missing %} #}
+{% include "snippets/java.zsh" ignore missing %}
+{% include "snippets/python.zsh" ignore missing %}
+{% include "snippets/go.zsh" ignore missing %}
+{% include "snippets/php.zsh" ignore missing %}
+{% include "snippets/rust.zsh" ignore missing %}
+{% include "snippets/ruby.zsh" ignore missing %}
+{# 语言类结束 #}
+
+{# 从这里开始是工具类 #}
+{% include "snippets/docker.zsh" ignore missing %}
+{% include "snippets/k8s.zsh" ignore missing %}
+{% include "snippets/git.zsh" ignore missing %}
+{% include "snippets/shell.zsh" ignore missing %}
+{# {% include "snippets/nnn.zsh" ignore missing %} #}
+{# 工具类结束 #}
+
+{% include "snippets/omz.zsh" ignore missing %}
+{% include "snippets/other.zsh" ignore missing %}
+{# 使用 Volta 之后就不需要那么麻烦了 #}
+{% include "snippets/nodejs.zsh" ignore missing %}
+{% include "snippets/99-last.zsh" ignore missing %}

@@ -1,0 +1,19 @@
+alma_repo_appstream_repos:
+  - repo_id: appstream
+    repo_name: AlmaLinux $releasever - AppStream
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/AppStream/$basearch/os/
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/appstream
+  - repo_id: appstream-debuginfo
+    repo_name: AlmaLinux $releasever - AppStream - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/AppStream/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/appstream-debug
+  - repo_id: appstream-source
+    repo_name: AlmaLinux $releasever - AppStream - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/AppStream/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/appstream-source

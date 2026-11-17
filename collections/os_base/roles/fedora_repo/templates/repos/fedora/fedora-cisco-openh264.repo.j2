@@ -1,0 +1,15 @@
+{% for repo in fedora_repo_cisco_openh264_repos %}
+[{{ repo.repo_id }}]
+name={{ repo.repo_name }}
+{# 对于 H264 源只有 metalink #}
+metalink={{ repo.repo_metalink }}
+enabled={{ repo.repo_enabled }}
+countme=1
+metadata_expire=7d
+repo_gpgcheck=0
+type=rpm
+gpgcheck=1
+gpgkey={{ repo.repo_gpgkey }}
+skip_if_unavailable=False
+
+{% endfor %}

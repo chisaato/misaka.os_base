@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MIT-0
+---
+galaxy_info:
+  author: chisaato <catsreporter@proton.me>
+  description: btrfsmaintenance 配置管理
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+
+  galaxy_tags:
+    - linux
+    - infrastructure
+
+dependencies: []

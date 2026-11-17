@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: chisaato
+  description: journald 与 Fedora、Debian 自定义 logrotate 规则管理
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Fedora
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+dependencies: []

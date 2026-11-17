@@ -1,0 +1,46 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: podman
+platforms:
+  - name: logging-debian12
+    image: docker.io/library/debian:12
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    privileged: true
+    systemd: always
+    command: [/sbin/init]
+    security_opts:
+      - label=disable
+  - name: logging-debian13
+    image: docker.io/library/debian:13
+    dockerfile: Dockerfile.j2
+    pre_build_image: false
+    privileged: true
+    systemd: always
+    command: [/sbin/init]
+    security_opts:
+      - label=disable
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_become: true
+  log: true
+  env:
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../.dev
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+    - destroy

@@ -1,0 +1,80 @@
+---
+- name: 没有 marker 时保持为空
+  when: not fedora_dist_upgrade_marker_stat.stat.exists
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_marker: null
+    fedora_dist_upgrade_marker_corrupt: false
+
+- name: 接受损坏的 marker，但不覆盖
+  when:
+    - fedora_dist_upgrade_marker_stat.stat.exists
+    - fedora_dist_upgrade_marker_parsed.stdout | trim == 'corrupt'
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_marker: null
+    fedora_dist_upgrade_marker_corrupt: true
+
+- name: 解析完好的 marker
+  when:
+    - fedora_dist_upgrade_marker_stat.stat.exists
+    - fedora_dist_upgrade_marker_parsed.stdout | trim != 'corrupt'
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_marker: "{{ fedora_dist_upgrade_marker_parsed.stdout | from_json }}"
+    fedora_dist_upgrade_marker_corrupt: false
+
+- name: 把损坏标志放进事实
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_observed: >-
+      {{ fedora_dist_upgrade_observed | combine({'marker_corrupt': fedora_dist_upgrade_marker_corrupt | bool}) }}
+
+- name: 读取 Fedora 发布清单
+  ansible.builtin.uri:
+    url: https://fedoraproject.org/releases.json
+    return_content: true
+  register: fedora_dist_upgrade_releases_json
+  retries: 3
+  delay: 5
+  until: fedora_dist_upgrade_releases_json.status | default(0) | int == 200
+  failed_when: false
+
+- name: 只保留纯数字稳定版本
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        sys.path.insert(0, sys.argv[1])
+        import dist_upgrade_state as marker
+        raw = sys.stdin.read().strip() or "[]"
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = []
+        print(json.dumps(marker.stable_releases(payload)))
+      - "{{ role_path }}/../dist_upgrade_state/files"
+  args:
+    stdin: "{{ fedora_dist_upgrade_releases_json.content | default('[]', true) }}"
+  register: fedora_dist_upgrade_stable_cmd
+  changed_when: false
+  delegate_to: localhost
+
+- name: 组装判定请求
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_releases_ok: "{{ fedora_dist_upgrade_releases_json.status | default(0) | int == 200 }}"
+    fedora_dist_upgrade_stable_releases: "{{ fedora_dist_upgrade_stable_cmd.stdout | from_json }}"
+    fedora_dist_upgrade_request:
+      action: "{{ fedora_dist_upgrade_action }}"
+      until: "{{ fedora_dist_upgrade_until_effective }}"
+      until_was_explicit: "{{ fedora_dist_upgrade_until is defined }}"
+      target: "{{ fedora_dist_upgrade_target_release | int }}"
+      target_was_explicit: true
+      stable_releases: "{{ fedora_dist_upgrade_stable_cmd.stdout | from_json }}"
+      releases_ok: "{{ fedora_dist_upgrade_releases_json.status | default(0) | int == 200 }}"
+      caller_token: "{{ fedora_dist_upgrade_token }}"
+      now: "{{ lookup('pipe', 'date +%s') | int }}"
+      abandon_confirm: "{{ fedora_dist_upgrade_abandon_confirm | default('', true) }}"
+      retry_reboot: "{{ fedora_dist_upgrade_retry_reboot | default(false) | bool }}"
+      retry_confirm: "{{ fedora_dist_upgrade_retry_confirm | default('', true) }}"
+      tested_profile: "{{ fedora_dist_upgrade_tested_profile }}"
+      source: "{{ fedora_dist_upgrade_observed.os }}"
+      family: fedora

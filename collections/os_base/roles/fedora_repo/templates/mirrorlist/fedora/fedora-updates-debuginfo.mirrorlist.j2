@@ -1,0 +1,3 @@
+{% for fedora_repo_mirror_list_item in fedora_repo_mirror_list %}
+https://{{ fedora_repo_mirror_list_item }}/fedora/updates/$releasever/Everything/$basearch/debug/
+{% endfor %}

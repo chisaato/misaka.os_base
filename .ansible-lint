@@ -1,0 +1,17 @@
+---
+exclude_paths:
+  # 本地安装/校验用的 collection 快照缓存,不是源码
+  - .ansible
+  # vagrant 驱动的 create.yml 依赖 molecule 运行时环境,静态 lint 无法解析
+  - collections/os_base/molecule/default/create.yml
+kinds:
+  - vars: shared/molecule/libvirt/defaults.yml
+  - tasks: shared/molecule/libvirt/create_instance.yml
+  - tasks: shared/molecule/libvirt/destroy_instance.yml
+  - tasks: shared/molecule/libvirt/resolve_firmware.yml
+  - tasks: shared/molecule/libvirt/resolve_image.yml
+  - tasks: shared/molecule/libvirt/destroy_orphans.yml
+  - tasks: shared/molecule/libvirt/destroy_orphan_domain.yml
+  - tasks: shared/molecule/libvirt/validate_relaunch.yml
+skip_list:
+  - name[template]

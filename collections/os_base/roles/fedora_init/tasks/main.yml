@@ -1,0 +1,103 @@
+---
+# host_geo 收敛：默认按国内镜像处理，仅当显式设置为非 cn 时走国际源
+- name: 收敛 host_geo 为国内镜像开关
+  ansible.builtin.set_fact:
+    fedora_init_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+
+- name: 跳过：fedora_init 仅支持 Fedora
+  ansible.builtin.debug:
+    msg: "跳过：fedora_init 仅支持 Fedora，当前系统为 {{ ansible_facts['distribution'] }}"
+  when: ansible_facts['distribution'] != 'Fedora'
+
+- name: Fedora 初始化主体
+  when: ansible_facts['distribution'] == 'Fedora'
+  block:
+    - name: 获取系统服务
+      ansible.builtin.service_facts:
+
+    - name: 停用 Firewalld 防火墙
+      become: true
+      # 停用失败不应中断初始化流程
+      failed_when: false
+      # 只有存在才关闭
+      when: "'firewalld' in ansible_facts.services"
+      ansible.builtin.systemd_service:
+        name: firewalld
+        enabled: false
+        state: stopped
+
+    - name: 禁用 SELinux
+      become: true
+      ansible.builtin.template:
+        src: selinux.j2
+        dest: /etc/selinux/config
+        owner: root
+        mode: "0644"
+
+    - name: 启用 Chrony 服务
+      ansible.builtin.systemd_service:
+        name: chronyd
+        state: started
+        enabled: true
+
+    # 对于 Fedora >= 41,dnf5 后端需要 python3-libdnf5;
+    # 最小安装可能缺失,先探测再引导安装
+    - name: 检测 python3-libdnf5 是否已安装
+      become: true
+      ansible.builtin.command: rpm -q python3-libdnf5 # noqa: command-instead-of-module
+      register: fedora_init_libdnf5_check
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['distribution_version'] | int >= 41
+
+    - name: 引导安装 python3-libdnf5（dnf5 后端必需）
+      become: true
+      ansible.builtin.command: dnf install -y python3-libdnf5
+      register: fedora_init_libdnf5_install
+      changed_when: true
+      retries: 3
+      delay: 5
+      until: fedora_init_libdnf5_install.rc == 0
+      when: ansible_facts['distribution_version'] | int >= 41 and fedora_init_libdnf5_check.rc is defined and fedora_init_libdnf5_check.rc != 0
+
+    - name: 安装常用包
+      become: true
+      # 长下载任务,保留 retries + until 防网络抖动
+      retries: 5
+      until: fedora_init_dnf_install_packages is success
+      when: fedora_init_install_extra_tools
+      ansible.builtin.dnf:
+        name: "{{ fedora_init_packages }}"
+        state: present
+      register: fedora_init_dnf_install_packages
+
+    # 根据变量决定是否加载自动更新服务
+    # 如果小于 Fedora 41,照常加载
+    - name: 导入 dnf-automatic 任务
+      ansible.builtin.include_tasks: dnf_automatic.yml
+      when: fedora_init_enable_dnf_automatic and ansible_facts['distribution_version'] | int < 41
+
+    - name: 导入 dnf5-automatic 任务
+      ansible.builtin.include_tasks: dnf5_automatic.yml
+      when: fedora_init_enable_dnf_automatic and ansible_facts['distribution_version'] | int >= 41
+
+    - name: 检查 Fedora {{ ansible_facts['distribution_version'] }} 的软件包操作
+      ansible.builtin.stat:
+        path: "{{ role_path }}/tasks/extra/fc_{{ ansible_facts['distribution_version'] }}.yml"
+      # role_path 是控制机路径,stat 必须在控制机执行,否则远程机上恒不存在、任务被静默跳过
+      delegate_to: localhost
+      register: fedora_init_extra_task_file
+
+    - name: 导入 Fedora {{ ansible_facts['distribution_version'] }} 的软件包操作
+      ansible.builtin.include_tasks: tasks/extra/fc_{{ ansible_facts['distribution_version'] }}.yml
+      when: fedora_init_extra_task_file.stat.exists
+
+    - name: 导入通用工作
+      ansible.builtin.include_role:
+        name: misaka.os_base.common_init
+
+    # 只有在检测到存在 Btrfs 文件系统的时候才进行
+    # 判断方式为 fact 的 ansible_facts['mounts'] 对象数组中至少有一个 fstype 为 btrfs 的
+    - name: 导入 btrfs 任务
+      ansible.builtin.include_tasks: btrfs.yml
+      when: ansible_facts['mounts'] | selectattr('fstype', 'equalto', 'btrfs') | list | length > 0

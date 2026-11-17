@@ -1,0 +1,7 @@
+---
+- name: 状态机角色不直接改系统
+  ansible.builtin.debug:
+    msg: >-
+      dist_upgrade_state 的入口是 files/dist_upgrade_state.py 的
+      decide、lock-acquire、lock-takeover、lock-release、marker-write 与 build-marker。
+      Fedora 升级由 fedora_dist_upgrade 调用这些子命令。

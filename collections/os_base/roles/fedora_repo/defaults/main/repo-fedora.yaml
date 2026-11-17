@@ -1,0 +1,22 @@
+fedora_repo_base_repos:
+  - repo_id: fedora
+    repo_name: Fedora $releasever - $basearch
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/releases/$releasever/Everything/$basearch/os/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora.mirrorlist
+  - repo_id: fedora-debuginfo
+    repo_name: Fedora $releasever - $basearch - Debug
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/releases/$releasever/Everything/$basearch/debug/tree/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=fedora-debug-$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-debuginfo.mirrorlist
+  - repo_id: fedora-source
+    repo_name: Fedora $releasever - Source
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/releases/$releasever/Everything/source/tree/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=fedora-source-$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-source.mirrorlist

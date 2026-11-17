@@ -1,0 +1,10 @@
+---
+- name: Debian 12 到 13 在线分阶段升级（默认安装前暂停）
+  # 先由角色 raw 等待已有 worker，系统 Python 稳定后再收集事实。
+  gather_facts: false
+  hosts: all
+  # host_geo 由 inventory 提供，例如：
+  #   host_geo:
+  #     country: cn   # 未设置时角色默认按 cn 处理
+  roles:
+    - role: misaka.os_base.debian_dist_upgrade

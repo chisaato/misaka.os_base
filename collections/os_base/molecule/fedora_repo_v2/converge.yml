@@ -1,0 +1,21 @@
+---
+- name: 验证 Fedora 45 vendor repo 的迁移
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    fedora_repo_rpmfusion_enable: false
+  tasks:
+    - name: 制造待清理的旧版 repo 与 rpmsave
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: "# 旧版配置\n"
+        mode: "0644"
+      loop:
+        - /etc/yum.repos.d/fedora.repo
+        - /etc/yum.repos.d/fedora-updates.repo.rpmsave
+        - /etc/yum.repos.d/brave-browser.repo
+
+    - name: 执行 Fedora repo 角色
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_repo

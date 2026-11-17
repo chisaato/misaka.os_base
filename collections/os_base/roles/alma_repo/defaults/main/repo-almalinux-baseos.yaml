@@ -1,0 +1,19 @@
+alma_repo_baseos_repos:
+  - repo_id: baseos
+    repo_name: AlmaLinux $releasever - BaseOS
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/BaseOS/$basearch/os/
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/baseos
+  - repo_id: baseos-debuginfo
+    repo_name: AlmaLinux $releasever - BaseOS - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/BaseOS/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/baseos-debug
+  - repo_id: baseos-source
+    repo_name: AlmaLinux $releasever - BaseOS - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/BaseOS/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/baseos-source

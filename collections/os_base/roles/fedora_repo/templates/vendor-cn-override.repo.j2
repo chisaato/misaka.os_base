@@ -1,0 +1,9 @@
+{# repo id 与 mirrorlist 路径取自现有 defaults；不创建 vendor 不存在的 section。 #}
+{% for repo in fedora_repo_base_repos + fedora_repo_updates_repos + fedora_repo_updates_testing_repos + (fedora_repo_rpmfusion_free_repos + fedora_repo_rpmfusion_free_updates_repos + fedora_repo_rpmfusion_free_updates_testing_repos + fedora_repo_rpmfusion_nonfree_repos + fedora_repo_rpmfusion_nonfree_updates_repos + fedora_repo_rpmfusion_nonfree_updates_testing_repos if fedora_repo_rpmfusion_enable else []) %}
+{% if repo.repo_id in fedora_repo_vendor_ids %}
+[{{ repo.repo_id }}]
+metalink=
+mirrorlist={{ repo.mirrorlist }}
+
+{% endif %}
+{% endfor %}

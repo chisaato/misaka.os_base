@@ -1,0 +1,8 @@
+- name: 重载 APT 自动更新服务
+  become: true
+  ansible.builtin.systemd_service:
+    name: unattended-upgrades
+    state: restarted
+    daemon_reload: true
+    enabled: true
+  listen: "restart unattended-upgrades"

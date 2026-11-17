@@ -1,0 +1,38 @@
+# Podman Registry Mirrors
+{% set docker_mirrors = docker_registry_mirror | default([]) %}
+{% set podman_mirrors = docker_podman_registry_mirror | default({}) %}
+
+{% if docker_mirrors | length > 0 %}
+# Docker
+[[registry]]
+prefix = "docker.io"
+{# 拿掉镜像站地址开头的 https:// #}
+location = "{{ (docker_mirrors | first) | replace('https://', '') }}"
+
+{# 遍历 docker_registry_mirror 列表，生成多个 mirror 配置 #}
+{% for mirror in docker_mirrors %}
+[[registry.mirror]]
+location = "{{ mirror | replace('https://', '') }}"
+{% endfor %}
+{% endif %}
+
+{# 遍历 docker_podman_registry_mirror 先生成 registry 配置，然后生成对应的 mirror 配置 #}
+{% if podman_mirrors %}
+{% for registry, conf in podman_mirrors.items() %}
+{% if conf.endpoint is defined and (conf.endpoint | length > 0) %}
+{% if conf.remark is defined and conf.remark %}
+# {{ conf.remark }}
+{% endif %}
+[[registry]]
+prefix = "{{ registry | replace('https://', '') }}"
+location = "{{ registry | replace('https://', '') }}"
+
+{# 此处渲染 mirror 配置 #}
+{% for mirror in conf.endpoint %}
+[[registry.mirror]]
+location = "{{ mirror | replace('https://', '') }}"
+{% endfor %}
+
+{% endif %}
+{% endfor %}
+{% endif %}

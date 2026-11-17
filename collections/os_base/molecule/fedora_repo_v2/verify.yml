@@ -1,0 +1,92 @@
+---
+- name: 核验 override、清理与 vendor 漂移守卫
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    fedora_repo_rpmfusion_enable: false
+    fedora_repo_verify_nl: "\n"
+  tasks:
+    - name: 探测生成和清理结果
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/dnf/repos.override.d/40-misaka-cn-mirror.repo
+        - /etc/dnf/mirrorlist/fedora.mirrorlist
+        - /etc/yum.repos.d/fedora.repo
+        - /etc/yum.repos.d/fedora-updates.repo.rpmsave
+        - /etc/yum.repos.d/brave-browser.repo
+      register: fedora_repo_verify_paths
+
+    - name: 读取 override
+      ansible.builtin.slurp:
+        src: /etc/dnf/repos.override.d/40-misaka-cn-mirror.repo
+      register: fedora_repo_verify_override
+
+    - name: 断言覆盖和迁移结果
+      ansible.builtin.assert:
+        that:
+          - fedora_repo_verify_paths.results[0].stat.exists
+          - fedora_repo_verify_paths.results[1].stat.exists
+          - not fedora_repo_verify_paths.results[2].stat.exists
+          - not fedora_repo_verify_paths.results[3].stat.exists
+          - fedora_repo_verify_paths.results[4].stat.exists
+          - "'[fedora]' in (fedora_repo_verify_override.content | b64decode)"
+          - "'[fedora-updates]' in (fedora_repo_verify_override.content | b64decode)"
+          - >-
+            ('[fedora]' ~ fedora_repo_verify_nl ~ 'metalink=' ~ fedora_repo_verify_nl
+            ~ 'mirrorlist=file:///etc/dnf/mirrorlist/fedora.mirrorlist')
+            in (fedora_repo_verify_override.content | b64decode)
+
+    - name: 在一次性测试机制造 vendor 配置漂移并保证还原
+      block:
+        - name: 备份 vendor repo
+          ansible.builtin.copy:
+            src: /usr/share/dnf5/repos.d/fedora.repo
+            dest: /tmp/fedora-repo-v2-vendor-backup.repo
+            remote_src: true
+            mode: "0644"
+
+        - name: 修改 vendor repo 触发 rpm -V
+          ansible.builtin.lineinfile:
+            path: /usr/share/dnf5/repos.d/fedora.repo
+            line: "# molecule drift"
+
+        - name: 检查默认守卫拒绝漂移
+          block:
+            - name: 对漂移配置运行角色
+              ansible.builtin.include_role:
+                name: misaka.os_base.fedora_repo
+            - name: 守卫意外通过时失败
+              ansible.builtin.fail:
+                msg: "vendor 纯净性守卫未拒绝漂移"
+          rescue:
+            - name: 断言失败源于纯净性守卫
+              ansible.builtin.assert:
+                that:
+                  - "'rpmsave' in ansible_failed_result.msg"
+
+        - name: 显式同意修复后重新执行角色
+          ansible.builtin.include_role:
+            name: misaka.os_base.fedora_repo
+          vars:
+            fedora_repo_vendor_reinstall_drifted: true
+
+        - name: 确认重装后 Fedora vendor repo 完整
+          ansible.builtin.command:
+            argv: ["rpm", "-V", "fedora-repos"]
+          register: fedora_repo_verify_repaired
+          changed_when: false
+          failed_when: false
+
+        - name: 断言 vendor repo 没有漂移
+          ansible.builtin.assert:
+            that:
+              - fedora_repo_verify_repaired.stdout is not search('/usr/share/dnf5/repos.d/fedora.repo')
+      always:
+        - name: 恢复 vendor repo
+          ansible.builtin.copy:
+            src: /tmp/fedora-repo-v2-vendor-backup.repo
+            dest: /usr/share/dnf5/repos.d/fedora.repo
+            remote_src: true
+            mode: "0644"

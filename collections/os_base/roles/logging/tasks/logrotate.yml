@@ -1,0 +1,29 @@
+---
+- name: 检查自定义轮转规则名称和路径
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[A-Za-z0-9_-]+$')
+      - item.paths | length > 0
+    quiet: true
+  loop: "{{ logging_logrotate_rules }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: 配置角色命名空间下的轮转规则
+  become: true
+  ansible.builtin.template:
+    src: logrotate-rule.conf.j2
+    dest: "/etc/logrotate.d/misaka-logging-{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ logging_logrotate_rules }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: 启用 logrotate 定时器
+  become: true
+  ansible.builtin.systemd_service:
+    name: logrotate.timer
+    enabled: true
+    state: started

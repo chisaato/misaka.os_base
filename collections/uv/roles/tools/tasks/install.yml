@@ -1,0 +1,44 @@
+---
+- name: 安装 {{ uv_tool.name }}
+  ansible.builtin.command:
+    argv: "{{ [_uv_tools_bin, 'tool', 'install']
+      + (['--force'] if uv_tool.force | default(false) | bool else [])
+      + (['--python', uv_tool.python] if uv_tool.python | default('') | length else [])
+      + (['--with'] | product(uv_tool.with | default([])) | flatten)
+      + (['--with-executables-from'] | product(uv_tool.with_executables_from | default([])) | flatten)
+      + [uv_tool.source | default(uv_tool.name)] }}"
+  environment:
+    PATH: "{{ (tools_extra_paths + [ansible_facts.env.PATH | default('/usr/bin:/bin')]) | join(':') }}"
+  register: tools_install
+  retries: "{{ tools_retries }}"
+  delay: "{{ tools_retry_delay }}"
+  until: tools_install is succeeded
+  changed_when: >-
+    'is already installed' not in (
+      (tools_install.stdout | default(''))
+      ~ (tools_install.stderr | default(''))
+    )
+  vars:
+    _uv_tools_bin: "{{ tools_bin if tools_bin | length > 0 else (tools_which.stdout | default('') | trim) }}"
+
+- name: 升级 {{ uv_tool.name }}
+  when: (uv_tool.state | default(tools_state)) == 'latest'
+  ansible.builtin.command:
+    argv:
+      - "{{ _uv_tools_bin }}"
+      - tool
+      - upgrade
+      - "{{ uv_tool.name }}"
+  environment:
+    PATH: "{{ (tools_extra_paths + [ansible_facts.env.PATH | default('/usr/bin:/bin')]) | join(':') }}"
+  register: tools_upgrade
+  retries: "{{ tools_retries }}"
+  delay: "{{ tools_retry_delay }}"
+  until: tools_upgrade is succeeded
+  changed_when: >-
+    'Nothing to upgrade' not in (
+      (tools_upgrade.stdout | default(''))
+      ~ (tools_upgrade.stderr | default(''))
+    )
+  vars:
+    _uv_tools_bin: "{{ tools_bin if tools_bin | length > 0 else (tools_which.stdout | trim) }}"

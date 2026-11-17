@@ -1,0 +1,61 @@
+---
+# 探测 iptables 是否存在(仅启用清理时执行)
+- name: 检查 iptables 是否存在
+  ansible.builtin.command: iptables --version
+  register: common_init_iptables_check
+  changed_when: false
+  # iptables 不存在时 rc 非 0 属预期,由后续任务的 when 判断
+  failed_when: false
+  when: common_init_clear_firewall
+
+- name: 设置防火墙默认放通
+  become: true
+  ansible.builtin.iptables:
+    chain: "{{ item }}"
+    policy: ACCEPT
+  with_items:
+    - "INPUT"
+    - "OUTPUT"
+    - "FORWARD"
+  when: common_init_clear_firewall and common_init_iptables_check.rc == 0
+
+- name: 清空防火墙出入控制
+  become: true
+  ansible.builtin.iptables:
+    chain: "{{ item }}"
+    flush: true
+  with_items:
+    - "INPUT"
+    - "OUTPUT"
+  when: common_init_clear_firewall and common_init_iptables_check.rc == 0
+
+- name: 导入日志治理
+  ansible.builtin.include_role:
+    name: misaka.os_base.logging
+
+# 容器类虚拟化(guest + docker/podman/lxc/containerd)无独立内核,
+# 写内核级 sysctl 无意义且可能失败;
+# KVM 等 VM guest 照常应用(用户环境的 VM 是测试环境,需要生效)
+- name: 判断是否运行在容器中
+  ansible.builtin.set_fact:
+    common_init_in_container: "{{ ansible_facts['virtualization_role'] == 'guest' and ansible_facts['virtualization_type'] in common_init_container_types }}"
+
+- name: 切换队列调度器
+  when: not common_init_in_container
+  ansible.posix.sysctl:
+    name: net.core.default_qdisc
+    state: present
+    value: "fq"
+    reload: true
+    sysctl_set: true
+    sysctl_file: /etc/sysctl.d/90-tcp-bbr.conf
+
+- name: 切换 TCP 拥塞控制算法为 BBR
+  when: not common_init_in_container
+  ansible.posix.sysctl:
+    name: net.ipv4.tcp_congestion_control
+    state: present
+    value: "bbr"
+    reload: true
+    sysctl_set: true
+    sysctl_file: /etc/sysctl.d/90-tcp-bbr.conf

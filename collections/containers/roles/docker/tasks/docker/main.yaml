@@ -1,0 +1,90 @@
+# 检测对应发行版的 task 文件是否存在
+- name: 检测对应发行版的 task 文件是否存在
+  ansible.builtin.stat:
+    path: "{{ role_path }}/tasks/docker/{{ ansible_facts['distribution'] | lower }}.yaml"
+  delegate_to: localhost
+  register: docker_distro_task_file
+
+# 不在就退出
+- name: 提示不受支持的发行版 {{ ansible_facts['distribution'] }}
+  ansible.builtin.fail:
+    msg:
+      - "尚未支持在 {{ ansible_facts['distribution'] }} 上安装 Docker"
+  when: not docker_distro_task_file.stat.exists
+
+# 禁用 podman 和 podman-restart 开机启动
+- name: 禁用 podman 服务
+  become: true
+  failed_when: false
+  ansible.builtin.systemd_service:
+    name:
+      - podman
+      - podman-restart
+    state: stopped
+    enabled: false
+
+# 删除 /etc/containers/nodocker
+- name: 删除 /etc/containers/nodocker
+  become: true
+  ansible.builtin.file:
+    path: /etc/containers/nodocker
+    state: absent
+
+# 导入
+- name: 导入 {{ ansible_facts['distribution'] }}  设置 Docker 任务
+  ansible.builtin.include_tasks: "docker/{{ ansible_facts['distribution'] | lower }}.yaml"
+
+- name: 创建 Docker 配置目录
+  become: true
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+- name: 给大家瞅瞅配置文件是啥样
+  ansible.builtin.debug:
+    msg: "{{ lookup('template', 'daemon.json.j2') }}"
+
+- name: 渲染 Docker 配置文件
+  become: true
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+    # daemon.json 写坏会导致 dockerd 起不来,渲染后先校验
+    validate: python3 -m json.tool %s
+
+- name: 创建 Docker Systemd 替换文件目录
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d/
+    state: directory
+    mode: "0755"
+
+- name: 设定 Docker Systemd 服务替换
+  become: true
+  ansible.builtin.template:
+    src: 90-no-args.conf.j2
+    dest: /etc/systemd/system/docker.service.d/90-no-args.conf
+    mode: "0644"
+  notify: 重载 Docker systemd 单元
+
+# 环境约束:绝不允许重启 docker 服务,仅保证开机自启
+- name: 保证 Docker 服务开机自启
+  become: true
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+
+- name: 移除 Podman 模拟 Docker Socket 配置
+  become: true
+  ansible.builtin.file:
+    path: /etc/tmpfiles.d/docker-podman-sock.conf
+    state: absent
+
+# 移除 tmpfiles 之前创建的 /run/docker.sock 软链接
+- name: 移除 Podman 模拟的 Docker Socket
+  become: true
+  ansible.builtin.file:
+    path: /run/docker.sock
+    state: absent

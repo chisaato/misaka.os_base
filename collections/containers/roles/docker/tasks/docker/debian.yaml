@@ -1,0 +1,57 @@
+# 安装 gnupg
+- name: 安装 gnupg
+  become: true
+  ansible.builtin.apt:
+    name: gnupg2
+    state: present
+    update_cache: true
+
+- name: 下载 Docker 公钥 (官方)
+  when: host_geo.country != "cn"
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /tmp/docker.gpg
+    mode: "0644"
+
+- name: 下载 Docker 公钥 (国内)
+  when: host_geo.country == "cn"
+  ansible.builtin.get_url:
+    url: https://{{ docker_ce_mirror_cn }}/docker-ce/linux/debian/gpg
+    dest: /tmp/docker.gpg
+    mode: "0644"
+
+# 先探测目标 keyring 是否存在,仅在缺失时执行 dearmor
+- name: 探测 Docker CE 源密钥是否已导入
+  become: true
+  ansible.builtin.stat:
+    path: /etc/apt/trusted.gpg.d/docker-ce.gpg
+  register: docker_ce_keyring
+
+- name: 导入 Debian {{ ansible_facts['distribution_release'] }} Docker CE 源密钥
+  become: true
+  when: not docker_ce_keyring.stat.exists
+  # 仅在上一步探测到 keyring 缺失时才会执行,此时必然产生真实变更
+  changed_when: true
+  ansible.builtin.shell: "gpg --dearmor --output - /tmp/docker.gpg > /etc/apt/trusted.gpg.d/docker-ce.gpg"
+
+- name: 设置 Debian {{ ansible_facts['distribution_release'] }} Docker CE 源
+  become: true
+  ansible.builtin.template:
+    mode: "0644"
+    src: docker-ce.list.j2
+    dest: /etc/apt/sources.list.d/docker-ce.list
+
+- name: 安装 Docker CE
+  become: true
+  retries: 5
+  until: docker_apt_install_docker_ce is success
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+      - docker-buildx-plugin
+    state: present
+    update_cache: true
+  register: docker_apt_install_docker_ce

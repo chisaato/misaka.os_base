@@ -1,0 +1,23 @@
+---
+# 清单缺失时只销毁带 metadata 的瞬态域，不按路径删除磁盘或 NVRAM。
+- name: 列出当前全部域
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - list
+      - --all
+      - --name
+  register: libvirt_orphan_domains
+  changed_when: false
+
+- name: 检查不在 instance config 中的 mol- 域
+  ansible.builtin.include_tasks: "{{ libvirt_support_dir }}/destroy_orphan_domain.yml"
+  loop: "{{ libvirt_orphan_domains.stdout_lines }}"
+  loop_control:
+    loop_var: libvirt_orphan_name
+    label: "{{ libvirt_orphan_name }}"
+  when:
+    - libvirt_orphan_name is match('^mol-')
+    - libvirt_orphan_name not in (libvirt_instance_config | map(attribute='domain') | list)

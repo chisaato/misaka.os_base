@@ -1,0 +1,21 @@
+namespace: misaka
+name: containers
+version: 1.3.0
+readme: README.md
+authors:
+  - chisaato <catsreporter@proton.me>
+description: 容器相关的设置
+license:
+  - GPL-2.0-or-later
+license_file: ""
+tags:
+  - linux
+  - infrastructure
+dependencies:
+  misaka.os_base: ">=1.12.0"
+repository: ""
+issues: ""
+build_ignore:
+  - .vscode
+  - shared
+  - collections

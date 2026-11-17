@@ -1,0 +1,31 @@
+{
+	"hosts": [
+		"unix:///var/run/docker.sock"
+	],
+	"experimental": true,
+	"userland-proxy": false,
+	"features": {
+		"buildkit": true
+	},
+	"log-driver": "json-file",
+	"log-opts": {
+		"max-size": "10m",
+		"max-file": "3"
+	},
+	"default-ulimits": {},
+	"registry-mirrors": [
+	    {% for mirror in docker_registry_mirror | default([]) %}
+		"{{ mirror }}"{% if not loop.last %},{% endif %}
+		{% endfor %}
+	],
+	"exec-opts": [
+		"native.cgroupdriver=systemd"
+	],
+	"live-restore": true,
+	{% if docker_enable_ipv6 %}
+	"ipv6": true,
+	"fixed-cidr-v6": "fd17:fc56:bb5d::/48",
+	"ip6tables": {{ docker_enable_firewall | bool | to_json }},
+	{% endif %}
+	"iptables": {{ docker_enable_firewall | bool | to_json }}
+}

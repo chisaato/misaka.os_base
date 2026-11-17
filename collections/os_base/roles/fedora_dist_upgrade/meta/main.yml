@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  author: chisaato
+  description: Fedora 大版本升级
+  company: N/A
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Fedora
+      versions:
+        - all

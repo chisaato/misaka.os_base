@@ -1,0 +1,97 @@
+---
+- name: Fedora 45 升级后重建国内源并迁移旧 repo
+  when: fedora_dist_upgrade_observed.os | int >= 45
+  ansible.builtin.include_role:
+    name: misaka.os_base.fedora_repo
+  vars:
+    fedora_repo_target_major_version: "{{ fedora_dist_upgrade_observed.os }}"
+
+- name: 安装升级后的清理工具
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - rpmconf
+      - symlinks
+      - clean-rpm-gpg-pubkey
+      - dracut-config-rescue
+    state: present
+
+- name: 确保 dnf5 的 python 绑定存在
+  when: fedora_dist_upgrade_observed.os | int >= 41
+  become: true
+  ansible.builtin.dnf:
+    name: python3-libdnf5
+    state: present
+
+- name: 列出仍可删除的旧 installonly 软件包
+  become: true
+  ansible.builtin.command:
+    argv: ["dnf5", "repoquery", "--installonly", "--latest-limit=-1"]
+  register: fedora_dist_upgrade_old_packages
+  changed_when: false
+  failed_when: false
+
+- name: 删除旧的 installonly 软件包
+  when: fedora_dist_upgrade_old_packages.stdout | default('') | trim | length > 0
+  become: true
+  ansible.builtin.command:
+    argv: "{{ ['dnf5', 'remove', '-y'] + (fedora_dist_upgrade_old_packages.stdout.split() | list) }}"
+  register: fedora_dist_upgrade_old_remove
+  changed_when: fedora_dist_upgrade_old_remove.rc == 0
+  failed_when: fedora_dist_upgrade_old_remove.rc not in [0, 1]
+
+- name: 清理不再使用的 GPG 公钥
+  become: true
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, subprocess
+        def keys():
+            return sorted(subprocess.run(
+                ['rpm','-qa','gpg-pubkey','--qf','%{NAME}-%{VERSION}-%{RELEASE}\n'],
+                check=True,capture_output=True,text=True).stdout.splitlines())
+        before = keys()
+        result = subprocess.run(['clean-rpm-gpg-pubkey'], capture_output=True, text=True)
+        if result.returncode not in [0,1]:
+            raise RuntimeError(result.stderr or result.stdout)
+        print(json.dumps({'changed': before != keys(), 'output':result.stdout, 'stderr':result.stderr}))
+  register: fedora_dist_upgrade_clean_gpg
+  changed_when: (fedora_dist_upgrade_clean_gpg.stdout | from_json).changed | bool
+
+- name: 移除不再被依赖的软件包
+  become: true
+  ansible.builtin.dnf:
+    autoremove: true
+    state: absent
+
+- name: 检查是否已经存在完整的 rescue 镜像
+  become: true
+  ansible.builtin.find:
+    paths: /boot
+    patterns:
+      - "vmlinuz-0-rescue-*"
+      - "initramfs-0-rescue-*.img"
+    recurse: true
+  register: fedora_dist_upgrade_current_rescue
+
+- name: 当前内核还没有 rescue 时才生成
+  when: fedora_dist_upgrade_current_rescue.matched | int < 2
+  become: true
+  ansible.builtin.command:
+    argv:
+      - kernel-install
+      - add
+      - "{{ ansible_facts['kernel'] }}"
+      - "/lib/modules/{{ ansible_facts['kernel'] }}/vmlinuz"
+  register: fedora_dist_upgrade_kernel_install
+  changed_when: fedora_dist_upgrade_kernel_install.rc == 0
+  failed_when: fedora_dist_upgrade_kernel_install.rc not in [0, 1]
+
+# rescue 文件通常按 machine-id 命名，不含内核版本。
+# 保留已有镜像，不按文件名猜测版本并删除；人工确认旧镜像后再清理。
+
+- name: 收尾阶段没有其他自动动作
+  ansible.builtin.debug:
+    msg: "升级后的自动清理已结束。剩余的配置合并需要人工处理。"

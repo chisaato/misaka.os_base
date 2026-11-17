@@ -1,0 +1,19 @@
+alma_repo_sap_repos:
+  - repo_id: sap
+    repo_name: AlmaLinux $releasever - SAP
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/SAP/$basearch/os/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/sap
+  - repo_id: sap-debuginfo
+    repo_name: AlmaLinux $releasever - SAP - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/SAP/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/sap-debug
+  - repo_id: sap-source
+    repo_name: AlmaLinux $releasever - SAP - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/SAP/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/sap-source

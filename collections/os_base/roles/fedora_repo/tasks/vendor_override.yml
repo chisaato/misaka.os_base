@@ -1,0 +1,57 @@
+---
+- name: 创建 dnf override 目录
+  become: true
+  ansible.builtin.file:
+    path: /etc/dnf/repos.override.d
+    state: directory
+    mode: "0755"
+
+- name: 创建 mirrorlist 目录
+  become: true
+  ansible.builtin.file:
+    path: /etc/dnf/mirrorlist
+    state: directory
+    mode: "0755"
+
+- name: 获取现有 vendor repo section
+  become: true
+  ansible.builtin.find:
+    paths: /usr/share/dnf5/repos.d
+    patterns: "*.repo"
+  register: fedora_repo_vendor_files
+
+- name: 读取现有 vendor repo 定义
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ fedora_repo_vendor_files.files }}"
+  register: fedora_repo_vendor_contents
+
+- name: 准备真实换行符
+  # 折叠标量内 Jinja 的 '\n' 字面量不解码为换行,join 后文件边界处的
+  # 首个 section 会匹配不上 (?m)^[,必须用 YAML 双引号预解码
+  ansible.builtin.set_fact:
+    fedora_repo_vendor_nl: "\n"
+
+- name: 汇总 vendor section id
+  ansible.builtin.set_fact:
+    fedora_repo_vendor_ids: >-
+      {{ fedora_repo_vendor_contents.results
+         | map(attribute='content') | map('b64decode') | join(fedora_repo_vendor_nl)
+         | regex_findall('(?m)^\[([^\]]+)\]') }}
+
+- name: 渲染 Fedora mirrorlist
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/dnf/mirrorlist/{{ item.path | regex_replace('[.]j2$', '') }}"
+    mode: "0644"
+  with_community.general.filetree: templates/mirrorlist/fedora/
+  when: item.state == 'file'
+
+- name: 渲染 vendor repo 的国内 override
+  become: true
+  ansible.builtin.template:
+    src: vendor-cn-override.repo.j2
+    dest: /etc/dnf/repos.override.d/40-misaka-cn-mirror.repo
+    mode: "0644"

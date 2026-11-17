@@ -1,0 +1,136 @@
+---
+- name: 验证日志治理及发行版文件所有权
+  hosts: all
+  become: true
+  tasks:
+    - name: 读取 journald 配置
+      ansible.builtin.slurp:
+        src: /etc/systemd/journald.conf.d/01-persist-storage.conf
+      register: logging_verify_journald
+
+    - name: 断言 journald 全部策略及旧变量兼容性
+      ansible.builtin.assert:
+        that:
+          - item in (logging_verify_journald.content | b64decode).splitlines()
+      loop:
+        - '[Journal]'
+        - Storage=persistent
+        - Compress=yes
+        - SystemMaxUse=256M
+        - SystemKeepFree=1G
+        - RuntimeMaxUse=50M
+        - MaxRetentionSec=1month
+        - MaxFileSec=1month
+        - SyncIntervalSec=5m
+        - ForwardToSyslog=no
+
+    - name: 检查持久日志目录
+      ansible.builtin.stat:
+        path: /var/log/journal
+      register: logging_verify_journal_dir
+
+    - name: 断言日志目录权限
+      ansible.builtin.assert:
+        that:
+          - logging_verify_journal_dir.stat.isdir
+          - logging_verify_journal_dir.stat.pw_name == 'root'
+          - logging_verify_journal_dir.stat.gr_name == 'systemd-journal'
+          - logging_verify_journal_dir.stat.mode == '2755'
+
+    - name: 检查 journal 磁盘使用命令
+      ansible.builtin.command: journalctl --disk-usage
+      changed_when: false
+
+    - name: 校验 logrotate 配置语法
+      ansible.builtin.command: logrotate -d /etc/logrotate.conf
+      changed_when: false
+
+    - name: 读取自定义 logrotate 规则
+      ansible.builtin.slurp:
+        src: /etc/logrotate.d/misaka-logging-molecule_logging
+      register: logging_verify_rule
+
+    - name: 断言自定义规则生效
+      ansible.builtin.assert:
+        that:
+          - "'\"/var/log/molecule-logging/*.log\"' in (logging_verify_rule.content | b64decode)"
+          - "'daily' in (logging_verify_rule.content | b64decode)"
+          - "'rotate 7' in (logging_verify_rule.content | b64decode)"
+
+    - name: 读取轮转定时器状态
+      ansible.builtin.systemd_service:
+        name: logrotate.timer
+      register: logging_verify_timer
+
+    - name: 断言轮转定时器状态
+      ansible.builtin.assert:
+        that:
+          - logging_verify_timer.status.UnitFileState == 'enabled'
+          - logging_verify_timer.status.ActiveState == 'active'
+
+    - name: 收集已安装软件包
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: 读取默认自定义规则
+      ansible.builtin.slurp:
+        src: /etc/logrotate.d/misaka-logging-defaults
+      register: logging_verify_defaults
+
+    - name: 断言默认规则轮转选项合理
+      ansible.builtin.assert:
+        that:
+          - item in (logging_verify_defaults.content | b64decode)
+      loop:
+        - '"/var/log/molecule-defaults/*.log"'
+        - weekly
+        - rotate 4
+        - compress
+        - dateext
+        - missingok
+        - notifempty
+
+    - name: 读取 prepare 的配置基线
+      ansible.builtin.slurp:
+        src: /tmp/logging-baseline.json
+      register: logging_verify_baseline_file
+
+    - name: 解析配置基线
+      ansible.builtin.set_fact:
+        logging_verify_baseline: "{{ logging_verify_baseline_file.content | b64decode | from_json }}"
+
+    - name: 重新读取发行版主文件及原有规则
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+        checksum_algorithm: sha256
+      loop: "{{ logging_verify_baseline.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      register: logging_verify_files
+
+    - name: 断言所有既有配置内容及权限均保持原样
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.checksum == item.item.checksum
+          - item.stat.mode == item.item.mode
+          - item.stat.uid == item.item.uid
+          - item.stat.gid == item.item.gid
+      loop: "{{ logging_verify_files.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: 查找轮转规则文件
+      ansible.builtin.find:
+        paths: /etc/logrotate.d
+        file_type: file
+      register: logging_verify_rules
+
+    - name: 断言仅新增命名空间规则且没有引入或移除其他软件包
+      ansible.builtin.assert:
+        that:
+          - >-
+            (logging_verify_rules.files | map(attribute='path') | sort) ==
+            ((logging_verify_baseline.files | map(attribute='path') | select('match', '^/etc/logrotate.d/') | list)
+             + ['/etc/logrotate.d/misaka-logging-molecule_logging', '/etc/logrotate.d/misaka-logging-defaults']) | sort
+          - logging_verify_baseline.packages == (ansible_facts.packages.keys() | sort)

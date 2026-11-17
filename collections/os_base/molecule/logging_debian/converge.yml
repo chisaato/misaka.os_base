@@ -1,0 +1,3 @@
+---
+- name: 复用跨发行版日志治理
+  ansible.builtin.import_playbook: ../logging_fedora/converge.yml

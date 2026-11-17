@@ -1,0 +1,15 @@
+---
+- name: 只读获取 guest 锁文件
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} lock-read
+    --root {{ fedora_dist_upgrade_state_dir }}
+  register: fedora_dist_upgrade_status_lock
+  changed_when: false
+
+- name: 把租约和持有者事实纳入只读输出
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_observed: >-
+      {{ fedora_dist_upgrade_observed | combine({
+        'lock': (fedora_dist_upgrade_status_lock.stdout_lines | select('match', '^\{') | first | from_json).owner
+      }) }}

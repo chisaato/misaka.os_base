@@ -1,0 +1,103 @@
+---
+# 锁覆盖整个角色调用：探测、判定、写入与重启。只在暂停/结束时释放。
+- name: 读取已有目录锁
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} lock-read
+    --root {{ fedora_dist_upgrade_state_dir }}
+  register: fedora_dist_upgrade_lock_read
+  changed_when: false
+
+- name: 检查是否有 dnf 或 rpm 正在运行
+  become: true
+  ansible.builtin.command:
+    argv: ["bash", "-lc", "pgrep -x dnf5 || pgrep -x dnf || pgrep -x rpm"]
+  register: fedora_dist_upgrade_worker
+  changed_when: false
+  failed_when: false
+
+- name: 切出锁状态的第一段 JSON
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        decoder = json.JSONDecoder()
+        payload, _ = decoder.raw_decode(sys.stdin.read().lstrip())
+        json.dump(payload, sys.stdout)
+  args:
+    stdin: "{{ fedora_dist_upgrade_lock_read.stdout }}"
+  register: fedora_dist_upgrade_lock_json
+  changed_when: false
+  delegate_to: localhost
+
+- name: 记下锁与工作进程
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_lock_owner: "{{ (fedora_dist_upgrade_lock_json.stdout | from_json).owner }}"
+    fedora_dist_upgrade_observed: >-
+      {{
+        fedora_dist_upgrade_observed | combine({
+          'lock': (
+            (fedora_dist_upgrade_lock_json.stdout | from_json).owner | combine({
+              'worker_alive': fedora_dist_upgrade_worker.rc == 0
+            })
+          ) if (fedora_dist_upgrade_lock_json.stdout | from_json).owner else none
+        }, recursive=True)
+      }}
+
+- name: 取得新锁
+  when: fedora_dist_upgrade_lock_owner is none
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} lock-acquire
+    --root {{ fedora_dist_upgrade_state_dir }}
+    --token {{ fedora_dist_upgrade_token }}
+    --boot-id {{ fedora_dist_upgrade_observed.boot_id }}
+    --lease-until {{ (lookup('pipe', 'date +%s') | int) + (fedora_dist_upgrade_lock_lease_seconds | int) }}
+    --controller {{ fedora_dist_upgrade_controller }}
+  register: fedora_dist_upgrade_lock_acquire
+  changed_when: false
+
+- name: 目录锁竞态的输家必须在事务探测前拒绝
+  when: fedora_dist_upgrade_lock_owner is none
+  ansible.builtin.assert:
+    that:
+      - (fedora_dist_upgrade_lock_acquire.stdout_lines | select('match', '^\\{') | first | from_json).acquired | bool
+    fail_msg: "lock_held：另一个控制机赢得目录锁，本次不探测或更改事务。"
+
+- name: 同一 token 续租
+  when:
+    - fedora_dist_upgrade_lock_owner is not none
+    - fedora_dist_upgrade_lock_owner.token == fedora_dist_upgrade_token
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} lock-refresh
+    --root {{ fedora_dist_upgrade_state_dir }}
+    --token {{ fedora_dist_upgrade_token }}
+    --boot-id {{ fedora_dist_upgrade_observed.boot_id }}
+    --lease-until {{ (lookup('pipe', 'date +%s') | int) + (fedora_dist_upgrade_lock_lease_seconds | int) }}
+    --controller {{ fedora_dist_upgrade_controller }}
+  changed_when: false
+
+- name: 陈旧锁则接管
+  when:
+    - fedora_dist_upgrade_lock_owner is not none
+    - fedora_dist_upgrade_lock_owner.token != fedora_dist_upgrade_token
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} lock-takeover
+    --root {{ fedora_dist_upgrade_state_dir }}
+    --token {{ fedora_dist_upgrade_token }}
+    --boot-id {{ fedora_dist_upgrade_observed.boot_id }}
+    --lease-until {{ (lookup('pipe', 'date +%s') | int) + (fedora_dist_upgrade_lock_lease_seconds | int) }}
+    --controller {{ fedora_dist_upgrade_controller }}
+    --now {{ lookup('pipe', 'date +%s') }}
+  register: fedora_dist_upgrade_lock_takeover
+  changed_when: fedora_dist_upgrade_lock_takeover.rc == 0
+
+- name: 标记本步持有锁
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_lock_held: true
+    fedora_dist_upgrade_took_over: >-
+      {{ fedora_dist_upgrade_lock_takeover is defined and not (fedora_dist_upgrade_lock_takeover.skipped | default(false)) }}

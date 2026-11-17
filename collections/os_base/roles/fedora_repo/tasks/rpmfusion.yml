@@ -1,0 +1,138 @@
+- name: 获取软件包安装状态
+  become: true
+  block:
+    - name: "获取软件包 fact"
+      ansible.builtin.package_facts:
+        manager: auto
+
+- name: 告知 RPMFusion 源安装文件的下载地址
+  when: fedora_repo_use_cn_mirror
+  ansible.builtin.debug:
+    msg:
+      - "RPMFusion 源使用 {{ fedora_repo_rpmfusion_mirror }}"
+
+# 首先挑选地址
+- name: 设定 RPMFusion 源 RPM 下载地址
+  ansible.builtin.set_fact:
+    fedora_repo_rpmfusion_free_url: https://mirrors.rpmfusion.org/free/fedora
+    fedora_repo_rpmfusion_nonfree_url: https://mirrors.rpmfusion.org/nonfree/fedora
+  when: not fedora_repo_use_cn_mirror
+
+- name: 设定 RPMFusion 源 RPM 下载地址 (国内)
+  ansible.builtin.set_fact:
+    fedora_repo_rpmfusion_free_url: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/free/fedora
+    fedora_repo_rpmfusion_nonfree_url: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/nonfree/fedora
+  when: fedora_repo_use_cn_mirror
+
+- name: 打印最终下载地址
+  ansible.builtin.debug:
+    msg:
+      - "Free 源来自 {{ fedora_repo_rpmfusion_free_url }}/rpmfusion-free-release-{{ fedora_repo_target_major_version }}.noarch.rpm"
+      - "NonFree 源来自 {{ fedora_repo_rpmfusion_nonfree_url }}/rpmfusion-nonfree-release-{{ fedora_repo_target_major_version }}.noarch.rpm"
+
+# 安装,直接在线安装
+# disable_gpg_check: 国内网络下 rpmfusion 的 GPG key 拉取易失败,权衡后跳过签名校验;
+# 密钥随后随 release 包落地,后续安装走正常校验
+- name: 安装 RPMFusion Free 源
+  become: true
+  ansible.builtin.dnf:
+    disable_gpg_check: true # 国内网络下 rpmfusion key 拉取易失败,权衡后关闭签名校验
+    # name: /tmp/rpmfusion-free.rpm
+    name: "{{ fedora_repo_rpmfusion_free_url }}/rpmfusion-free-release-{{ fedora_repo_target_major_version }}.noarch.rpm"
+    state: present
+  register: fedora_repo_rpmfusion_free_install
+  retries: 3
+  delay: 10
+  until: fedora_repo_rpmfusion_free_install is succeeded
+  when: "'rpmfusion-free-release' not in ansible_facts.packages"
+
+- name: 安装 RPMFusion NonFree 源
+  become: true
+  ansible.builtin.dnf:
+    disable_gpg_check: true # 同上,国内网络下 key 拉取易失败
+    # name: /tmp/rpmfusion-nonfree.rpm
+    name: "{{ fedora_repo_rpmfusion_nonfree_url }}/rpmfusion-nonfree-release-{{ fedora_repo_target_major_version }}.noarch.rpm"
+    state: present
+  register: fedora_repo_rpmfusion_nonfree_install
+  retries: 3
+  delay: 10
+  until: fedora_repo_rpmfusion_nonfree_install is succeeded
+  when: "'rpmfusion-nonfree-release' not in ansible_facts.packages"
+
+# - name: 删除 RPMFusion Free 源 RPM
+#   ansible.builtin.file:
+#     path: /tmp/rpmfusion-free.rpm
+#     state: absent
+#   when: "'rpmfusion-free-release' not in ansible_facts.packages"
+
+# - name: 删除 RPMFusion Free 源 RPM
+#   ansible.builtin.file:
+#     path: /tmp/rpmfusion-nonfree.rpm
+#     state: absent
+#   when: "'rpmfusion-nonfree-release' not in ansible_facts.packages"
+
+- name: 渲染 RPMFusion 镜像源文件
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/yum.repos.d/{{ item.path | regex_replace('[.]j2$', '') }}"
+    mode: "0644"
+  with_community.general.filetree: templates/repos/rpmfusion/
+  when: item.state == 'file' and fedora_repo_use_cn_mirror and not fedora_repo_vendor_relocated and 'tainted' not in item.path
+
+- name: 创建 mirrorlist 目录
+  become: true
+  when: fedora_repo_use_mirrorlist and fedora_repo_use_cn_mirror
+  ansible.builtin.file:
+    mode: "0755"
+    path: "/etc/dnf/mirrorlist/"
+    state: directory
+    owner: "root"
+    group: "root"
+
+- name: 渲染 RPMFusion mirrorlist 文件
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/dnf/mirrorlist/{{ item.path | regex_replace('[.]j2$', '') }}"
+    mode: "0644"
+  with_community.general.filetree: templates/mirrorlist/rpmfusion/
+  when:
+    - item.state == 'file'
+    - fedora_repo_use_mirrorlist
+    - fedora_repo_use_cn_mirror
+    - not fedora_repo_vendor_relocated or item.path is not search('tainted') or fedora_repo_rpmfusion_enable_tained
+
+- name: 渲染 RPMFusion Tainted mirrorlist 文件
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/dnf/mirrorlist/{{ item.path | regex_replace('[.]j2$', '') }}"
+    mode: "0644"
+  with_community.general.filetree: templates/mirrorlist/rpmfusion-tained/
+  when: fedora_repo_vendor_relocated and fedora_repo_rpmfusion_enable_tained and fedora_repo_use_cn_mirror and item.state == 'file'
+
+# 准备 RPMFusion Tained 源
+# 需要注意的是,他们的签名密钥与对应的 Free/NonFree 是一样的,所以此处只需要安装一下包即可
+# 如果选择不启用 Tained 源,那么渲染出来的 repo 中全都是 enable=0
+- name: 安装 RPMFusion Free Tained 源
+  become: true
+  when: fedora_repo_rpmfusion_enable_tained
+  ansible.builtin.dnf:
+    name:
+      - rpmfusion-free-release-tainted
+      - rpmfusion-nonfree-release-tainted
+    state: present
+  register: fedora_repo_rpmfusion_tainted_install
+  retries: 3
+  delay: 10
+  until: fedora_repo_rpmfusion_tainted_install is succeeded
+
+- name: 渲染 RPMFusion Tained 镜像源文件
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/yum.repos.d/{{ item.path | regex_replace('[.]j2$', '') }}"
+    mode: "0644"
+  with_community.general.filetree: templates/repos/rpmfusion/
+  when: fedora_repo_rpmfusion_enable_tained and item.state == 'file' and 'tainted' in item.path

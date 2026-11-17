@@ -1,0 +1,13 @@
+- name: 安装 Docker
+  gather_facts: true
+  hosts: all
+  vars:
+    host_geo:
+      country: cn
+    auto_init_repo_only: true
+    rpmfusion_enable: false
+    # 对 Fedora 使用 Podman
+    docker_use_podman: true
+  roles:
+    - role: misaka.os_base.auto_init
+    - role: misaka.containers.docker

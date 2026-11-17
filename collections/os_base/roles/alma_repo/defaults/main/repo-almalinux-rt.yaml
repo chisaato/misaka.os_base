@@ -1,0 +1,19 @@
+alma_repo_rt_repos:
+  - repo_id: rt
+    repo_name: AlmaLinux $releasever - RT
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/RT/$basearch/os/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/rt
+  - repo_id: rt-debuginfo
+    repo_name: AlmaLinux $releasever - RT - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/RT/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/rt-debug
+  - repo_id: rt-source
+    repo_name: AlmaLinux $releasever - RT - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/RT/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/rt-source

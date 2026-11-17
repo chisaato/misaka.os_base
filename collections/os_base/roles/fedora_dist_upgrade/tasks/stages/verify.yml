@@ -1,0 +1,76 @@
+---
+- name: 重启后重新采集事实
+  ansible.builtin.setup:
+
+- name: 重新探测升级结果
+  become: true
+  ansible.builtin.script: "{{ role_path }}/files/probe_fedora.py"
+  register: fedora_dist_upgrade_verify_probe
+  changed_when: false
+
+- name: 切出核验用的第一段 JSON
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        decoder = json.JSONDecoder()
+        payload, _ = decoder.raw_decode(sys.stdin.read().lstrip())
+        json.dump(payload, sys.stdout)
+  args:
+    stdin: "{{ fedora_dist_upgrade_verify_probe.stdout }}"
+  register: fedora_dist_upgrade_verify_probe_json
+  changed_when: false
+  delegate_to: localhost
+
+- name: 记下升级后的事实
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_observed: "{{ fedora_dist_upgrade_verify_probe_json.stdout | from_json }}"
+
+- name: 读取 fedora-release-common 版本
+  become: true
+  ansible.builtin.command:
+    argv: ["rpm", "-q", "fedora-release-common"]
+  register: fedora_dist_upgrade_release_rpm
+  changed_when: false
+
+- name: 收集失败的单元
+  become: true
+  ansible.builtin.command:
+    argv: ["systemctl", "--failed", "--no-legend", "--plain"]
+  register: fedora_dist_upgrade_failed_units
+  changed_when: false
+  failed_when: false
+
+- name: 计算重启意图里的 boot_id
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_requested_boot_id: >-
+      {{
+        (fedora_dist_upgrade_marker | default({}, true)).intent.boot_id
+        if (fedora_dist_upgrade_marker | default({}, true)).intent is mapping
+        else ''
+      }}
+
+- name: 升级结果必须与目标版本一致
+  ansible.builtin.assert:
+    that:
+      - fedora_dist_upgrade_observed.os == (fedora_dist_upgrade_decision.effective_target | string)
+      - fedora_dist_upgrade_observed.pending is none
+      - fedora_dist_upgrade_release_rpm.stdout is search('-' ~ (fedora_dist_upgrade_decision.effective_target | string))
+      - fedora_dist_upgrade_observed.kernel is search('\\.fc' ~ (fedora_dist_upgrade_decision.effective_target | string) ~ '\\.')
+      - fedora_dist_upgrade_requested_boot_id | length == 0 or fedora_dist_upgrade_observed.boot_id != fedora_dist_upgrade_requested_boot_id
+    fail_msg: >-
+      离线重启没有把系统带到目标版本。os={{ fedora_dist_upgrade_observed.os }}
+      kernel={{ fedora_dist_upgrade_observed.kernel }}
+      pending={{ fedora_dist_upgrade_observed.pending }}。
+      这是 reboot_failed，不会自动再重启。
+
+- name: 记录核验证据
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_record_intent_set: true
+    fedora_dist_upgrade_record_intent: null
+    fedora_dist_upgrade_record_evidence:
+      verify:
+        kernel: "{{ fedora_dist_upgrade_observed.kernel }}"
+        failed_units: "{{ fedora_dist_upgrade_failed_units.stdout_lines | default([]) }}"

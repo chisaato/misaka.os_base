@@ -1,0 +1,31 @@
+---
+- name: 卸载旧的 dnf-automatic (如果存在)
+  become: true
+  ansible.builtin.dnf:
+    update_cache: false
+    name:
+      - dnf-automatic
+    state: absent
+  register: fedora_init_dnf_automatic_remove
+  retries: 3
+  delay: 5
+  until: fedora_init_dnf_automatic_remove is success
+
+- name: 安装自动更新工具
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - dnf5-plugin-automatic
+    state: present
+  register: fedora_init_dnf5_automatic_install
+  retries: 3
+  delay: 5
+  until: fedora_init_dnf5_automatic_install is success
+
+- name: 渲染自动更新配置文件
+  become: true
+  ansible.builtin.template:
+    mode: "0644"
+    src: automatic-dnf5.conf.j2
+    dest: /etc/dnf/automatic.conf
+  notify: "restart dnf5-automatic"

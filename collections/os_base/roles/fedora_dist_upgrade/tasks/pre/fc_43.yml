@@ -1,0 +1,6 @@
+- name: 用 Fedora 43 目标版本渲染软件源
+  # 经 target 变量覆写实现跨版本渲染,不再覆写 ansible_facts
+  ansible.builtin.include_role:
+    name: misaka.os_base.fedora_repo
+  vars:
+    fedora_repo_target_major_version: "43"

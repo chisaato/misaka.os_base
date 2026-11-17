@@ -1,0 +1,31 @@
+# Fedora 使用 DNF5 override,Debian apt 的 docker-ce.list 仍维持烘焙式配置。
+- name: 配置 Fedora Docker CE 软件源
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/fedora_repo.yaml"
+
+# 清理不兼容的软件包,但是无须删除 podman 本身
+- name: 清理对于 Docker 不兼容的东西
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - podman-docker
+    state: absent
+
+- name: 安装 Docker CE
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+      - iptables-nft
+    state: present
+
+- name: 切换防火墙到 nft 兼容版本
+  become: true
+  community.general.alternatives:
+    name: iptables
+    path: /usr/bin/iptables-nft
+    state: selected
+  failed_when: false

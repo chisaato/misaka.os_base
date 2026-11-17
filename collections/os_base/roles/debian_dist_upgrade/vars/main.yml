@@ -1,0 +1,9 @@
+---
+# Debian 版本号 → Codename 映射
+# 用于计算目标升级版本的 codename
+debian_dist_upgrade_codename_map:
+  "10": "buster"
+  "11": "bullseye"
+  "12": "bookworm"
+  "13": "trixie"
+  "14": "forky"

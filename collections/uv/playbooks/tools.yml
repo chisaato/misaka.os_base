@@ -1,0 +1,6 @@
+---
+- name: 安装 uv tools
+  gather_facts: true
+  hosts: all
+  roles:
+    - role: misaka.uv.tools

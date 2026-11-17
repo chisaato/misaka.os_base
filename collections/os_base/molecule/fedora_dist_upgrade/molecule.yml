@@ -1,0 +1,48 @@
+---
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: default
+  options:
+    managed: true
+  libvirt:
+    libvirt_image_source: fedora-checksum
+    libvirt_fedora_release: 43
+    libvirt_image_index_url: https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/
+    libvirt_image_name_pattern: ^Fedora-Cloud-Base-Generic-43-[0-9.]+[.]x86_64[.]qcow2$$
+    libvirt_memory_mib: 3072
+    libvirt_vcpus: 2
+    libvirt_disk_gib: 20
+    libvirt_expected_distro: Fedora
+    libvirt_expected_major: "43"
+platforms:
+  - name: fedora43
+provisioner:
+  name: ansible
+  log: true
+  playbooks:
+    create: ../../../../shared/molecule/libvirt/create.yml
+    destroy: ../../../../shared/molecule/libvirt/destroy.yml
+  config_options:
+    defaults:
+      gathering: explicit
+ansible:
+  cfg:
+    defaults:
+      host_key_checking: false
+      gathering: explicit
+  env:
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../.dev
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - destroy
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
+verifier:
+  name: ansible

@@ -1,0 +1,43 @@
+---
+- name: 空载 PVE 8 到 9 实验专用切源
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 检查 PVE 9 的归档密钥已由最新 PVE 8 提供
+      ansible.builtin.stat:
+        path: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      register: pve_lab_archive_key
+
+    - name: 缺少密钥时在切源之前停止
+      ansible.builtin.assert:
+        that: pve_lab_archive_key.stat.exists
+
+    - name: 通过版本渲染契约切换 Debian 基础源
+      ansible.builtin.include_role:
+        name: misaka.os_base.debian_repo
+      vars:
+        debian_repo_target_major_version: "13"
+        debian_repo_target_codename: trixie
+
+    - name: 设置 PVE 9 no-subscription 目标源
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/proxmox.sources
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: https://mirrors.ustc.edu.cn/proxmox/debian
+          Suites: trixie
+          Components: pve-no-subscription
+          Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+
+    - name: 移除本实验基线的旧 PVE 源，防止混合版本
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/pve-no-subscription.list
+        - /etc/apt/sources.list.d/pve-no-subscription.sources
+        - /etc/apt/sources.list.d/pve-install-repo.list
+        - /etc/apt/sources.list.d/pve-enterprise.list
+        - /etc/apt/sources.list.d/pve-enterprise.sources

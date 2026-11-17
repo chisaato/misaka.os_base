@@ -1,0 +1,8 @@
+- name: 导入 Fedora 源和镜像任务
+  ansible.builtin.include_role:
+    name: misaka.os_base.fedora_repo
+
+- name: 导入 Fedora 初始化任务
+  when: not auto_init_repo_only
+  ansible.builtin.include_role:
+    name: misaka.os_base.fedora_init

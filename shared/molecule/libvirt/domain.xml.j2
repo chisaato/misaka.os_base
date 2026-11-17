@@ -1,0 +1,60 @@
+<domain type='kvm'>
+  <name>{{ libvirt_domain_name }}</name>
+  <uuid>{{ libvirt_domain_uuid }}</uuid>
+  <metadata>
+    <misaka:molecule xmlns:misaka='https://misaka.local/molecule/libvirt'>
+      <misaka:managed>true</misaka:managed>
+      <misaka:run_id>{{ libvirt_run_id }}</misaka:run_id>
+      <misaka:scenario>{{ lookup('env', 'MOLECULE_SCENARIO_NAME') }}</misaka:scenario>
+      <misaka:platform>{{ libvirt_platform_name }}</misaka:platform>
+    </misaka:molecule>
+  </metadata>
+  <memory unit='MiB'>{{ libvirt_memory_mib }}</memory>
+  <vcpu>{{ libvirt_vcpus }}</vcpu>
+  <os>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <loader readonly='yes' type='pflash' format='{{ libvirt_uefi_loader_format }}'>{{ libvirt_uefi_loader }}</loader>
+    <nvram format='{{ libvirt_nvram_format }}'>{{ libvirt_nvram_path }}</nvram>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+  </features>
+  <cpu mode='host-passthrough'/>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='writeback' discard='unmap'/>
+      <source file='{{ libvirt_overlay_path }}'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ libvirt_seed_path }}'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <interface type='network'>
+      <mac address='{{ libvirt_mac }}'/>
+      <source network='{{ libvirt_network }}'/>
+      <model type='virtio'/>
+    </interface>
+    <serial type='file'>
+      <source path='{{ libvirt_serial_log }}' append='on'/>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='1'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <rng model='virtio'>
+      <backend model='random'>/dev/urandom</backend>
+    </rng>
+  </devices>
+</domain>

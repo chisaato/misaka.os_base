@@ -1,0 +1,111 @@
+---
+- name: 设定 PVE hosts
+  ansible.builtin.template:
+    mode: "0644"
+    src: pve-hosts.j2
+    dest: /etc/hosts
+  when: pve_init_hosts
+
+- name: 移除 PVE 订阅源 (Legacy)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/pve-enterprise.list
+    state: absent
+  when: pve_init_remove_enterprise
+
+- name: 移除 PVE 订阅源 (DEB822)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/pve-enterprise.sources
+    state: absent
+  when: pve_init_remove_enterprise
+
+- name: 移除 Ceph 源 (Legacy)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/ceph.list
+    state: absent
+  when: pve_init_remove_enterprise
+
+- name: 移除 Ceph 源 (DEB822)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/ceph.sources
+    state: absent
+  when: pve_init_remove_enterprise
+
+- name: 设定 PVE 镜像源 (Legacy)
+  when:
+    - pve_init_use_cn_mirror
+    - ansible_facts['distribution_major_version'] | int < 13
+  ansible.builtin.template:
+    mode: "0644"
+    src: pve.j2
+    dest: /etc/apt/sources.list.d/pve-no-subscription.list
+
+- name: 设定 PVE 镜像源 (DEB822)
+  when:
+    - pve_init_use_cn_mirror
+    - ansible_facts['distribution_major_version'] | int >= 13
+  ansible.builtin.template:
+    mode: "0644"
+    src: pve.sources.j2
+    dest: /etc/apt/sources.list.d/pve-no-subscription.sources
+
+- name: 设定 Debian 镜像源
+  when: pve_init_auto_debian_init and pve_init_use_cn_mirror
+  ansible.builtin.include_role:
+    name: debian_repo
+
+- name: 检查 authorized_keys 是否是指向 /etc/pve/priv/authorized_keys 的符号链接
+  ansible.builtin.stat:
+    path: /root/.ssh/authorized_keys
+  register: pve_init_authorized_key_file
+
+- name: 删除 authorized_keys 的符号链接
+  ansible.builtin.file:
+    path: /root/.ssh/authorized_keys
+    state: absent
+  when: pve_init_authorized_key_file.stat.islnk is defined and pve_init_authorized_key_file.stat.islnk
+
+- name: 拷贝 authorized_keys 文件过来
+  ansible.builtin.copy:
+    src: "/etc/pve/priv/authorized_keys"
+    dest: "/root/.ssh/authorized_keys"
+    mode: "0600"
+    remote_src: true
+  when: pve_init_authorized_key_file.stat.islnk is defined and pve_init_authorized_key_file.stat.islnk
+
+- name: 打开 IPv4 转发
+  # ansible_facts['virtualization_role'] 不是 guest
+  # ansible_facts['virtualization_tech_guest'] 不包含 container
+  when: ansible_facts['virtualization_role'] != "guest" and "container" not in ansible_facts['virtualization_tech_guest']
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    state: present
+    value: "1"
+    reload: true
+    sysctl_set: true
+    # 写 drop-in,避免污染 /etc/sysctl.conf 主文件 (与 common_init 的做法一致)
+    sysctl_file: /etc/sysctl.d/90-pve_init.conf
+
+- name: 安装 PVE 需要的包
+  ansible.builtin.apt:
+    pkg:
+      - linux-cpupower
+    update_cache: true
+    cache_valid_time: 3600
+  register: pve_init_packages
+  retries: 3
+  delay: 10
+  until: pve_init_packages is succeeded
+
+# 处理完 PVE 部分,自动拉起 Debian 部分
+
+- name: 运行 Debian 初始设定
+  ansible.builtin.include_role:
+    name: debian_init
+  when: pve_init_auto_debian_init
+# - name: 获取 CPU 数量 (插槽数)
+#   debug:
+#     msg: "CPU 有 {{ ansible_facts['processor_count'] }} 个"
+
+# - name: 设定自动平衡 NUMA
+#   become: yes
+#   when: ansible_facts['processor_count'] > 1

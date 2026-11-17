@@ -1,0 +1,290 @@
+---
+- name: 计算本实例路径与域名
+  ansible.builtin.set_fact:
+    libvirt_platform_name: "{{ item.name }}"
+    libvirt_domain_name: "mol-{{ libvirt_run_id }}-{{ item.name }}"
+    libvirt_hostname: "{{ item.name }}"
+    libvirt_instance_dir: "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}/{{ item.name }}"
+    libvirt_overlay_path: "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}/{{ item.name }}/overlay.qcow2"
+    libvirt_seed_path: "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}/{{ item.name }}/seed.iso"
+    libvirt_key_path: "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}/{{ item.name }}/ssh_key"
+    libvirt_nvram_path: "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}/{{ item.name }}/nvram.fd"
+    libvirt_serial_log: "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}/{{ item.name }}/serial.log"
+
+- name: 拒绝过长或含路径分隔符的名称
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,30}$')
+      - libvirt_domain_name | length <= 200
+      - libvirt_overlay_path is match('^' ~ libvirt_cache_root ~ '/runs/' ~ libvirt_run_id ~ '/')
+    fail_msg: "平台名 {{ item.name }} 无法生成安全的 libvirt 域名或路径"
+
+- name: 拒绝覆盖创建前已经存在的同名域
+  ansible.builtin.assert:
+    that:
+      - libvirt_domain_name not in libvirt_domains_before.stdout_lines
+    fail_msg: "域名 {{ libvirt_domain_name }} 在本次创建前已经存在，拒绝接管宿主虚拟机"
+
+- name: 准备实例目录
+  ansible.builtin.file:
+    path: "{{ libvirt_instance_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: 生成本次专用 SSH 密钥
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -t
+      - ed25519
+      - -f
+      - "{{ libvirt_key_path }}"
+      - -N
+      - ""
+      - -C
+      - "{{ libvirt_domain_name }}"
+  args:
+    creates: "{{ libvirt_key_path }}"
+
+- name: 读取公钥
+  ansible.builtin.slurp:
+    src: "{{ libvirt_key_path }}.pub"
+  register: libvirt_pubkey_slurp
+
+- name: 记下公钥文本
+  ansible.builtin.set_fact:
+    libvirt_ssh_public_key: "{{ libvirt_pubkey_slurp.content | b64decode | trim }}"
+
+- name: 渲染 NoCloud 用户数据
+  ansible.builtin.template:
+    src: "{{ libvirt_support_dir }}/user-data.j2"
+    dest: "{{ libvirt_instance_dir }}/user-data"
+    mode: "0600"
+
+- name: 渲染 NoCloud 元数据
+  ansible.builtin.template:
+    src: "{{ libvirt_support_dir }}/meta-data.j2"
+    dest: "{{ libvirt_instance_dir }}/meta-data"
+    mode: "0644"
+
+- name: 渲染 NoCloud 网络配置
+  ansible.builtin.template:
+    src: "{{ libvirt_support_dir }}/network-config.j2"
+    dest: "{{ libvirt_instance_dir }}/network-config"
+    mode: "0644"
+
+- name: 生成 NoCloud seed ISO
+  ansible.builtin.command:
+    argv:
+      - genisoimage
+      - -output
+      - "{{ libvirt_seed_path }}"
+      - -volid
+      - cidata
+      - -joliet
+      - -rock
+      - -input-charset
+      - utf-8
+      - "{{ libvirt_instance_dir }}/user-data"
+      - "{{ libvirt_instance_dir }}/meta-data"
+      - "{{ libvirt_instance_dir }}/network-config"
+  args:
+    creates: "{{ libvirt_seed_path }}"
+
+- name: Seed 对 qemu 用户可读
+  ansible.builtin.file:
+    path: "{{ libvirt_seed_path }}"
+    mode: "0644"
+
+- name: 基于不可变基镜像创建独立 overlay
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - create
+      - -f
+      - qcow2
+      - -F
+      - qcow2
+      - -b
+      - "{{ libvirt_base_image }}"
+      - "{{ libvirt_overlay_path }}"
+      - "{{ libvirt_disk_gib }}G"
+  args:
+    creates: "{{ libvirt_overlay_path }}"
+
+- name: Overlay 对 qemu 用户可读写
+  ansible.builtin.file:
+    path: "{{ libvirt_overlay_path }}"
+    mode: "0664"
+
+- name: 生成本次域 UUID 与固定 MAC
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import uuid
+        import secrets
+        mac = "52:54:00:" + ":".join(f"{secrets.randbelow(256):02x}" for _ in range(3))
+        print(uuid.uuid4())
+        print(mac)
+  register: libvirt_identity
+  changed_when: false
+
+- name: 记下 UUID 与 MAC
+  ansible.builtin.set_fact:
+    libvirt_domain_uuid: "{{ libvirt_identity.stdout_lines[0] }}"
+    libvirt_mac: "{{ libvirt_identity.stdout_lines[1] }}"
+
+- name: 把 VARS 模板复制成该实例的 NVRAM
+  ansible.builtin.copy:
+    src: "{{ libvirt_uefi_nvram_template }}"
+    dest: "{{ libvirt_nvram_path }}"
+    mode: "0664"
+    remote_src: true
+    force: true
+
+- name: 准备空的串口日志
+  ansible.builtin.copy:
+    dest: "{{ libvirt_serial_log }}"
+    mode: "0664"
+    content: ""
+    force: false
+
+- name: 渲染域 XML
+  ansible.builtin.template:
+    src: "{{ libvirt_support_dir }}/domain.xml.j2"
+    dest: "{{ libvirt_instance_dir }}/domain.xml"
+    mode: "0600"
+
+- name: 定义并启动域
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - create
+      - "{{ libvirt_instance_dir }}/domain.xml"
+  register: libvirt_domain_create
+  changed_when: libvirt_domain_create.rc == 0
+
+- name: 等待 DHCP 租约出现本域 MAC
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - domifaddr
+      - "{{ libvirt_domain_name }}"
+      - --source
+      - lease
+  register: libvirt_lease
+  retries: "{{ (libvirt_ssh_wait_timeout | int / libvirt_ssh_wait_delay | int) | int }}"
+  delay: "{{ libvirt_ssh_wait_delay }}"
+  until: libvirt_lease.stdout is search('ipv4')
+  changed_when: false
+
+- name: 解析租约 IPv4
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import re
+        import sys
+        found = re.findall(r'(\d+\.\d+\.\d+\.\d+)/\d+', sys.stdin.read())
+        print("\n".join(found))
+  args:
+    stdin: "{{ libvirt_lease.stdout }}"
+  register: libvirt_address_lookup
+  changed_when: false
+
+- name: 记下租约地址
+  ansible.builtin.set_fact:
+    libvirt_address: "{{ libvirt_address_lookup.stdout_lines | first | default('') }}"
+
+- name: 拒绝租约落在 default NAT 之外
+  ansible.builtin.assert:
+    that:
+      - libvirt_address is match('^192\\.168\\.122\\.')
+    fail_msg: "域 {{ libvirt_domain_name }} 的地址 {{ libvirt_address }} 不在已有 default NAT 192.168.122.0/24"
+
+- name: 等待 SSH 可登录
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -i
+      - "{{ libvirt_key_path }}"
+      - -o
+      - BatchMode=yes
+      - -o
+      - StrictHostKeyChecking=no
+      - -o
+      - UserKnownHostsFile=/dev/null
+      - -o
+      - IdentitiesOnly=yes
+      - -o
+      - ConnectTimeout=5
+      - -p
+      - "{{ libvirt_ssh_port | string }}"
+      - "{{ libvirt_ssh_user }}@{{ libvirt_address }}"
+      - cloud-init status --wait
+  register: libvirt_ssh_ready
+  retries: "{{ (libvirt_ssh_wait_timeout | int / libvirt_ssh_wait_delay | int) | int }}"
+  delay: "{{ libvirt_ssh_wait_delay }}"
+  # Fedora cloud-init 在 status done 时仍可能返回 2。输出已经是完成就继续。
+  failed_when: false
+  until: "libvirt_ssh_ready.rc == 0 or (libvirt_ssh_ready.rc == 2 and 'status: done' in (libvirt_ssh_ready.stdout | default('')))"
+  changed_when: false
+
+- name: SSH 必须已经完成 cloud-init
+  ansible.builtin.assert:
+    that:
+      - "libvirt_ssh_ready.rc == 0 or (libvirt_ssh_ready.rc == 2 and 'status: done' in (libvirt_ssh_ready.stdout | default('')))"
+    fail_msg: >-
+      SSH 或 cloud-init 未完成。rc={{ libvirt_ssh_ready.rc }}
+      stdout={{ libvirt_ssh_ready.stdout | default('') }}
+      stderr={{ libvirt_ssh_ready.stderr | default('') }}
+
+- name: 写出本实例所有权清单
+  ansible.builtin.copy:
+    dest: "{{ libvirt_instance_dir }}/manifest.yml"
+    mode: "0600"
+    content: |
+      schema: 1
+      owner: misaka-molecule-libvirt
+      run_id: {{ libvirt_run_id }}
+      scenario: {{ lookup('env', 'MOLECULE_SCENARIO_NAME') }}
+      platform: {{ item.name }}
+      uri: {{ libvirt_uri }}
+      network: {{ libvirt_network }}
+      domain: {{ libvirt_domain_name }}
+      base_image: {{ libvirt_base_image }}
+      source_image: {{ libvirt_source_image | default(libvirt_base_image) }}
+      overlay: {{ libvirt_overlay_path }}
+      seed: {{ libvirt_seed_path }}
+      identity_file: {{ libvirt_key_path }}
+      address: {{ libvirt_address }}
+      user: {{ libvirt_ssh_user }}
+      uuid: {{ libvirt_domain_uuid }}
+      mac: {{ libvirt_mac }}
+      nvram: {{ libvirt_nvram_path }}
+      serial_log: {{ libvirt_serial_log }}
+      loader: {{ libvirt_uefi_loader }}
+      firmware: uefi
+
+- name: 登记 instance config
+  ansible.builtin.set_fact:
+    instance_conf: >-
+      {{
+        instance_conf + [{
+          'instance': item.name,
+          'address': libvirt_address,
+          'user': libvirt_ssh_user,
+          'port': libvirt_ssh_port | int,
+          'identity_file': libvirt_key_path,
+          'run_id': libvirt_run_id,
+          'domain': libvirt_domain_name,
+          'manifest': libvirt_instance_dir ~ '/manifest.yml'
+        }]
+      }}

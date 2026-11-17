@@ -1,0 +1,10 @@
+*.tar.gz
+e2e.log
+.marscode/
+.ansible/
+/.dev/
+.pytest_cache/
+__pycache__/
+.omo/run-continuation
+.venv/
+.scratch/

@@ -1,0 +1,22 @@
+fedora_repo_updates_repos:
+  - repo_id: updates
+    repo_name: Fedora $releasever - $basearch - Updates
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/updates/$releasever/Everything/$basearch/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=updates-released-f$releasever&arch=$basearch
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-updates.mirrorlist
+  - repo_id: updates-debuginfo
+    repo_name: Fedora $releasever - $basearch - Updates - Debug
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/updates/$releasever/Everything/$basearch/debug/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=updates-released-debug-f$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-updates-debuginfo.mirrorlist
+  - repo_id: updates-source
+    repo_name: Fedora $releasever - Updates Source
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/updates/$releasever/Everything/source/tree/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=updates-released-source-f$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-updates-source.mirrorlist

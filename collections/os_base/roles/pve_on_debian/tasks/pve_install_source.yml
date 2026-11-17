@@ -1,0 +1,43 @@
+---
+# PVE 安装源配置 (数据驱动)
+# 版本相关差异全部来自 vars/main.yml 的 pve_on_debian_release_map,
+# 国内外 (cn/official) 差异在开头收敛为两个 set_fact,渲染任务只写一份
+
+- name: 判定是否使用国内镜像
+  ansible.builtin.set_fact:
+    pve_on_debian_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+
+- name: "读取 Debian {{ ansible_facts['distribution_major_version'] }} 对应的 PVE 源配置"
+  ansible.builtin.set_fact:
+    pve_on_debian_release_info: "{{ pve_on_debian_release_map[ansible_facts['distribution_major_version'] | string] }}"
+
+- name: "收敛 PVE {{ pve_on_debian_release_info.pve_version }} 密钥地址与安装源模板"
+  ansible.builtin.set_fact:
+    # 国内且镜像站同步了密钥 (mirror_key) 时走镜像,否则一律从官方拉取
+    pve_on_debian_key_url: >-
+      {{ 'https://' ~ pve_on_debian_mirror ~ '/proxmox/debian/' ~ pve_on_debian_release_info.key_name
+      if pve_on_debian_use_cn_mirror and pve_on_debian_release_info.mirror_key else
+      'https://enterprise.proxmox.com/debian/' ~ pve_on_debian_release_info.key_name }}
+    # 模板名规则:cn 变体 + 格式后缀 (11/12 -> pve-cn.j2, 13 -> pve-cn.sources.j2)
+    pve_on_debian_apt_source_template: >-
+      {{ 'pve' ~ ('-cn' if pve_on_debian_use_cn_mirror else '') ~ ('.sources' if pve_on_debian_release_info.source_format == 'sources' else '') ~ '.j2' }}
+    # 渲染目标:Legacy 与 DEB822 的落盘路径不同
+    pve_on_debian_apt_source_dest: >-
+      {{ '/etc/apt/sources.list.d/pve-no-subscription' ~ ('.sources' if pve_on_debian_release_info.source_format == 'sources' else '.list') }}
+
+- name: "导入 PVE {{ pve_on_debian_release_info.pve_version }} 密钥"
+  ansible.builtin.get_url:
+    url: "{{ pve_on_debian_key_url }}"
+    dest: "{{ pve_on_debian_release_info.key_dest }}"
+    mode: "0644"
+    checksum: "{{ pve_on_debian_release_info.key_checksum | default(omit) }}"
+  register: pve_on_debian_key_download
+  retries: 3
+  delay: 10
+  until: pve_on_debian_key_download is succeeded
+
+- name: "渲染 PVE {{ pve_on_debian_release_info.pve_version }} 安装源"
+  ansible.builtin.template:
+    mode: "0644"
+    src: "{{ pve_on_debian_apt_source_template }}"
+    dest: "{{ pve_on_debian_apt_source_dest }}"

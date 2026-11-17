@@ -1,0 +1,19 @@
+alma_repo_nfv_repos:
+  - repo_id: nfv
+    repo_name: AlmaLinux $releasever - NFV
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/NFV/$basearch/os/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/nfv
+  - repo_id: nfv-debuginfo
+    repo_name: AlmaLinux $releasever - NFV - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/NFV/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/nfv-debug
+  - repo_id: nfv-source
+    repo_name: AlmaLinux $releasever - NFV - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/NFV/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/nfv-source

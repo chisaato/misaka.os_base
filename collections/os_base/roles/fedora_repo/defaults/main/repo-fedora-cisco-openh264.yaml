@@ -1,0 +1,13 @@
+fedora_repo_cisco_openh264_repos:
+  - repo_id: fedora-cisco-openh264
+    repo_name: Fedora $releasever openh264 (From Cisco) - $basearch
+    repo_baseurl: ""
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-$releasever&arch=$basearch
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+  - repo_id: fedora-cisco-openh264-debuginfo
+    repo_name: Fedora $releasever openh264 (From Cisco) - $basearch - Debug
+    repo_baseurl: ""
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-debug-$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch

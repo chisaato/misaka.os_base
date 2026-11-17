@@ -1,0 +1,18 @@
+---
+- name: 从 nosb 固件描述中选择唯一的 4M UEFI
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ libvirt_support_dir }}/../../scripts/libvirt_assets.py"
+      - firmware
+      - --dir
+      - "{{ libvirt_firmware_dir }}"
+  register: libvirt_firmware_cmd
+  changed_when: false
+
+- name: 记下 loader 与 NVRAM 模板
+  ansible.builtin.set_fact:
+    libvirt_uefi_loader: "{{ (libvirt_firmware_cmd.stdout | from_json).loader }}"
+    libvirt_uefi_loader_format: "{{ (libvirt_firmware_cmd.stdout | from_json).loader_format }}"
+    libvirt_uefi_nvram_template: "{{ (libvirt_firmware_cmd.stdout | from_json).nvram_template }}"
+    libvirt_nvram_format: "{{ (libvirt_firmware_cmd.stdout | from_json).nvram_format }}"

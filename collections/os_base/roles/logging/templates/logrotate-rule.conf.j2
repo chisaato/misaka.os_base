@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+{% for path in item.paths %}
+"{{ path }}"
+{% endfor %}
+{
+{% for option in item.options | default(['weekly', 'rotate 4', 'compress', 'dateext', 'missingok', 'notifempty']) %}
+    {{ option }}
+{% endfor %}
+}

@@ -1,0 +1,20 @@
+---
+# 调用方覆盖此清单。role 不内置具体工具。
+tools_list: []
+
+# present: 只 install（receipt 匹配则 no-op）
+# latest: install 后再 upgrade
+tools_state: present
+
+# 为空则用 PATH / login shell 查找 tools_executable
+tools_bin: ""
+tools_executable: uv
+
+tools_retries: 5
+tools_retry_delay: 5
+
+# ansible 非 login PATH 经常缺 nix / ~/.local
+tools_extra_paths:
+  - "{{ ansible_facts.env.HOME }}/.local/bin"
+  - "{{ ansible_facts.env.HOME }}/.nix-profile/bin"
+  - /nix/var/nix/profiles/default/bin

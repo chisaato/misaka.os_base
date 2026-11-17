@@ -1,0 +1,26 @@
+---
+- name: 读取孤儿域 XML
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - "{{ libvirt_uri }}"
+      - dumpxml
+      - "{{ libvirt_orphan_name }}"
+  register: libvirt_orphan_xml
+  changed_when: false
+  failed_when: libvirt_orphan_xml.rc not in [0, 1]
+
+- name: 只销毁带本次场景标记的瞬态域
+  when:
+    - libvirt_orphan_xml.rc == 0
+    - "'<misaka:managed>true</misaka:managed>' in libvirt_orphan_xml.stdout or '<managed>true</managed>' in libvirt_orphan_xml.stdout"
+    - lookup('env', 'MOLECULE_SCENARIO_NAME') | length > 0
+    - "('<misaka:scenario>' ~ lookup('env', 'MOLECULE_SCENARIO_NAME') ~ '</misaka:scenario>') in libvirt_orphan_xml.stdout"
+  block:
+    - name: 清单缺失时不删除任何文件
+      ansible.builtin.debug:
+        msg: >-
+          域 {{ libvirt_orphan_name }} 带场景标记，但不在当前 instance config 中。
+          同一场景名不足以证明属于本次控制机，因此不会自动销毁或删除文件。
+          请核对 metadata run_id、UUID 与该次创建日志，再明确销毁本轮资源。

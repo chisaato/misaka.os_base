@@ -1,0 +1,11 @@
+---
+# tasks file for auto_init
+- name: 导入 Fedora 的各种自动化任务
+  ansible.builtin.include_tasks: fedora.yml
+  when:
+    - ansible_facts['distribution'] == "Fedora" or
+      ansible_facts['distribution'] == "Nobara"
+
+- name: 导入 Debian 的各种自动化任务
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts['distribution'] == "Debian"

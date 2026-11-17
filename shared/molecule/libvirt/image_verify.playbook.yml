@@ -1,0 +1,74 @@
+---
+- name: 独立核验 ISO 成品的 UEFI 与重启
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 收集重启前客户机事实与 EFI 工具输出
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, subprocess
+            release = dict(line.split('=', 1) for line in pathlib.Path('/etc/os-release').read_text().splitlines() if '=' in line)
+            efi = pathlib.Path('/sys/firmware/efi/efivars')
+            assert efi.is_dir()
+            tool = subprocess.run(['efibootmgr', '-v'], check=True, capture_output=True, text=True)
+            assert 'BootCurrent:' in tool.stdout
+            cloud = subprocess.run(['cloud-init', 'status', '--long'], check=True, capture_output=True, text=True)
+            assert 'status: done' in cloud.stdout
+            print(json.dumps({'os': release['ID'].strip('"'), 'version': release['VERSION_ID'].strip('"'),
+                              'boot_id': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                              'machine_id': pathlib.Path('/etc/machine-id').read_text().strip(),
+                              'efi_variables': sorted(p.name for p in efi.iterdir()),
+                              'efibootmgr': tool.stdout, 'cloud_init': cloud.stdout,
+                              'marker': pathlib.Path('/etc/misaka-image-validation').read_text()}))
+      register: validation_before
+      changed_when: false
+
+    - name: 正常重启测试 VM 而不执行发行版升级
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        connect_timeout: 10
+        post_reboot_delay: 5
+
+    - name: 收集重启后事实与 EFI 工具输出
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, subprocess
+            release = dict(line.split('=', 1) for line in pathlib.Path('/etc/os-release').read_text().splitlines() if '=' in line)
+            assert pathlib.Path('/sys/firmware/efi/efivars').is_dir()
+            tool = subprocess.run(['efibootmgr', '-v'], check=True, capture_output=True, text=True)
+            assert 'BootCurrent:' in tool.stdout
+            print(json.dumps({'os': release['ID'].strip('"'), 'version': release['VERSION_ID'].strip('"'),
+                              'boot_id': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                              'machine_id': pathlib.Path('/etc/machine-id').read_text().strip(),
+                              'efibootmgr': tool.stdout, 'marker': pathlib.Path('/etc/misaka-image-validation').read_text()}))
+      register: validation_after
+      changed_when: false
+
+    - name: 断言重启改变 boot_id 但保留机器身份和幂等标记
+      vars:
+        validation_old: "{{ validation_before.stdout | from_json }}"
+        validation_new: "{{ validation_after.stdout | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - validation_old.os == 'debian' and validation_new.os == 'debian'
+          - validation_old.version | int == validation_major | int
+          - validation_new.version | int == validation_major | int
+          - validation_old.boot_id != validation_new.boot_id
+          - validation_old.machine_id == validation_new.machine_id
+          - validation_old.marker == validation_new.marker
+          - validation_old.efi_variables | length > 0
+
+    - name: 持久保存重启前后独立证据
+      become: false
+      ansible.builtin.copy:
+        dest: "{{ validation_evidence }}/guest.json"
+        mode: "0600"
+        content: "{{ {'before': validation_before.stdout | from_json, 'after': validation_after.stdout | from_json} | to_nice_json }}"
+      delegate_to: localhost

@@ -1,0 +1,18 @@
+---
+# PVE 镜像源 (同步了 proxmox 仓库的国内镜像站)
+pve_on_debian_mirror: mirrors.tuna.tsinghua.edu.cn
+pve_on_debian_supported_debian_versions:
+  # 不想为 pve 6 提供支持了
+  # - 10
+  - 11
+  - 12
+  - 13
+# 写入主机名和解析映射,如果机器不是长久持有那就不要写这一项.
+pve_on_debian_hosts: false
+# 是否接管 /etc/resolv.conf (写入固定 DNS)
+# 注意:若目标机使用 systemd-resolved,/etc/resolv.conf 是指向 stub-resolv.conf 的符号链接,
+# 直接覆盖会把它替换成普通文件并破坏解析,有该场景时请关闭此开关
+pve_on_debian_manage_resolv_conf: true
+# 是否执行 apt full 升级 (安装 PVE 前把系统整体升到最新)
+# 默认关闭:full 升级耗时长且可能连带内核升级需要重启,按需开启
+pve_on_debian_full_upgrade: false

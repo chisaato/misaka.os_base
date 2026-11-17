@@ -1,0 +1,7 @@
+---
+- name: 安装 exa
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - exa
+  when: ansible_facts['distribution_version'] | int == 38

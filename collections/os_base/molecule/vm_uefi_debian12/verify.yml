@@ -1,0 +1,33 @@
+---
+- name: 校验 Debian 12 UEFI
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 确认发行版与固件
+      ansible.builtin.stat:
+        path: /sys/firmware/efi
+      register: vm_uefi_efi
+
+    - name: 列出 EFI 变量
+      ansible.builtin.command:
+        argv:
+          - find
+          - /sys/firmware/efi/efivars
+          - -mindepth
+          - "1"
+          - -maxdepth
+          - "1"
+          - -printf
+          - "%f\n"
+      register: vm_uefi_efivars
+      changed_when: false
+
+    - name: 断言 Debian 12 与 UEFI
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - (ansible_facts['distribution_major_version'] | int) == 12
+          - vm_uefi_efi.stat.isdir
+          - vm_uefi_efivars.stdout_lines | length > 0
+          - vm_uefi_efivars.stdout is search('Boot')

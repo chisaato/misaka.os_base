@@ -1,0 +1,44 @@
+---
+- name: 拒绝忙碌或异常事务，不自动修复 dpkg
+  ansible.builtin.assert:
+    that:
+      - (debian_dist_upgrade_probe.stdout | from_json).phase not in ['needs_human', 'conflict']
+      - >-
+        (debian_dist_upgrade_probe.stdout | from_json).phase != 'busy'
+        or ((debian_dist_upgrade_probe.stdout | from_json).job | default({}) or {}).get('live', false)
+    fail_msg: "{{ debian_dist_upgrade_probe.stdout }}"
+
+- name: 安装 guest 内可观察执行器目录
+  ansible.builtin.file:
+    path: /usr/local/lib/misaka-dist-upgrade
+    state: directory
+    mode: "0700"
+
+- name: 安装在线事务与共享原子 marker 执行器
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/usr/local/lib/misaka-dist-upgrade/{{ item.name }}"
+    mode: "0600"
+  loop:
+    - src: "{{ role_path }}/files/debian_upgrade.py"
+      name: debian_upgrade.py
+    - src: "{{ role_path }}/../dist_upgrade_state/files/dist_upgrade_state.py"
+      name: dist_upgrade_state.py
+
+- name: 认领或收养机器事实，不抬高阶段
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/lib/misaka-dist-upgrade/debian_upgrade.py
+      - claim
+      - --profile
+      - "{{ debian_dist_upgrade_tested_profile }}"
+  register: debian_dist_upgrade_claim
+  changed_when: debian_dist_upgrade_claim.rc == 0 and (debian_dist_upgrade_claim.stdout | from_json).changed
+
+- name: 递归推进到明确暂停点
+  ansible.builtin.set_fact:
+    debian_dist_upgrade_step_count: 0
+
+- name: 执行分阶段推进
+  ansible.builtin.include_tasks: step.yml

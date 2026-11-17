@@ -1,0 +1,36 @@
+---
+fedora_init_selinux_level: "disabled"
+fedora_init_selinux_type: "targeted"
+# 是否安装基础工具以外的东西
+fedora_init_install_extra_tools: true
+# 是否配置自动更新
+fedora_init_enable_dnf_automatic: true
+
+# 常用软件包列表
+fedora_init_packages:
+  - wget
+  - curl
+  - vim
+  - screen
+  - git
+  # 小工具
+  - lsof
+  - htop
+  - ncdu
+  - aria2
+  - zstd
+  # 增强 Shell
+  # - eza
+  - lsd
+  - zsh
+  - byobu
+  - navi
+  - fd-find
+  - bat
+  # zsh 需要
+  - fzf
+  - zoxide
+  # 切换Shell用
+  - util-linux-user
+  # 时间同步
+  - chrony

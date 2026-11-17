@@ -1,0 +1,10 @@
+---
+- name: 恢复测试使用与用户相同的 advance 入口
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    fedora_dist_upgrade_target_release: 44
+    fedora_dist_upgrade_until: completed
+  roles:
+    - role: misaka.os_base.fedora_dist_upgrade

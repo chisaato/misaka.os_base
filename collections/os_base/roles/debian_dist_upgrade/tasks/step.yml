@@ -1,0 +1,103 @@
+---
+- name: 限制一次执行的推进次数，异常无进展必须报错
+  ansible.builtin.assert:
+    that: debian_dist_upgrade_step_count | int < 12
+
+- name: 递增本次阶段计数
+  ansible.builtin.set_fact:
+    debian_dist_upgrade_step_count: "{{ debian_dist_upgrade_step_count | int + 1 }}"
+
+- name: 根据实时事实选取下一步
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/lib/misaka-dist-upgrade/debian_upgrade.py
+      - next
+      - --until
+      - "{{ debian_dist_upgrade_effective_until }}"
+  register: debian_dist_upgrade_next_result
+  changed_when: false
+
+- name: 保存本步决策
+  ansible.builtin.set_fact:
+    debian_dist_upgrade_next: "{{ debian_dist_upgrade_next_result.stdout | from_json }}"
+
+- name: 记录暂停点
+  ansible.builtin.debug:
+    msg: "{{ debian_dist_upgrade_next }}"
+
+- name: 明确报告安装前闸门
+  ansible.builtin.debug:
+    msg: 下载已完成，当前未许可安装；只有显式 until=minimal_upgraded 或更后阶段才会安装。
+  when:
+    - debian_dist_upgrade_next.step == 'pause'
+    - debian_dist_upgrade_next.phase == 'downloaded'
+
+- name: 明确报告待重启而不自动越过暂停点
+  ansible.builtin.debug:
+    msg: 完整包状态已确认，尚未确认本次重启完成；当前待重启，需人工重启或显式 until=reboot_requested / completed。
+  when:
+    - debian_dist_upgrade_next.step == 'pause'
+    - debian_dist_upgrade_next.phase == 'full_upgraded'
+
+- name: 切源前确认包数据库快照
+  ansible.builtin.include_tasks: 10_render_sources.yml
+  when: debian_dist_upgrade_next.step == 'prepare'
+
+- name: 启动或观察持久 systemd 在线事务
+  when: debian_dist_upgrade_next.step in ['prepare', 'download', 'minimal', 'full']
+  block:
+    - name: 由 guest 启动独立于 SSH 的 oneshot 单元
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /usr/local/lib/misaka-dist-upgrade/debian_upgrade.py
+          - start
+          - --stage
+          - "{{ debian_dist_upgrade_next.step }}"
+          - --retries
+          - "{{ debian_dist_upgrade_retries | string }}"
+          - --delay
+          - "{{ debian_dist_upgrade_delay | string }}"
+      register: debian_dist_upgrade_start
+      changed_when: debian_dist_upgrade_start.rc == 0 and (debian_dist_upgrade_start.stdout | from_json).changed
+
+    - name: 使用 retries 和 until 观察同一单元，失败不重启安装
+      ansible.builtin.raw: |
+        expected_stage={{ debian_dist_upgrade_next.step | quote }}
+        {{ lookup('file', role_path ~ '/files/observe_job.sh') }}
+      register: debian_dist_upgrade_wait
+      changed_when: false
+      retries: "{{ debian_dist_upgrade_wait_retries }}"
+      delay: "{{ debian_dist_upgrade_wait_delay }}"
+      until: debian_dist_upgrade_wait.rc != 75
+
+- name: 记录重启意图后独立执行重启
+  when: debian_dist_upgrade_next.step == 'reboot'
+  block:
+    - name: 持久保存重启前 boot_id
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /usr/local/lib/misaka-dist-upgrade/debian_upgrade.py
+          - reboot-intent
+      register: debian_dist_upgrade_reboot_intent
+      changed_when: debian_dist_upgrade_reboot_intent.rc == 0 and (debian_dist_upgrade_reboot_intent.stdout | from_json).changed
+
+    - name: 重启到实际已安装的目标内核
+      ansible.builtin.reboot:
+        reboot_timeout: 900
+
+- name: 依据联合事实验证并完成，不自动 autoremove
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/lib/misaka-dist-upgrade/debian_upgrade.py
+      - finish
+  register: debian_dist_upgrade_finish
+  changed_when: debian_dist_upgrade_finish.rc == 0 and (debian_dist_upgrade_finish.stdout | from_json).changed
+  when: debian_dist_upgrade_next.step == 'finish'
+
+- name: 完成本步后重新探测，避免预展开循环越过闸门
+  ansible.builtin.include_tasks: step.yml
+  when: debian_dist_upgrade_next.step != 'pause'

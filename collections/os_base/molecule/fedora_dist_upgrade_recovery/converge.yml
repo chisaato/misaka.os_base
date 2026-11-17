@@ -1,0 +1,47 @@
+---
+- name: 先建立真实 Fedora 43 下载前检查点
+  ansible.builtin.import_playbook: prepare_upgrade.yml
+
+- name: 控制机故障与并发 advance 测试
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: 读取本场景实例配置
+      ansible.builtin.set_fact:
+        recovery_instance: "{{ (lookup('file', lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/instance_config.yml') | from_yaml) | first }}"
+
+    - name: 写出恢复测试专用 inventory
+      ansible.builtin.copy:
+        dest: /tmp/opencode/fedora-recovery-inventory.yml
+        mode: "0600"
+        content: |
+          all:
+            hosts:
+              fedora43:
+                ansible_host: {{ recovery_instance.address }}
+                ansible_user: {{ recovery_instance.user }}
+                ansible_ssh_private_key_file: {{ recovery_instance.identity_file }}
+                ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+    - name: 为本次测试分配独立日志目录
+      ansible.builtin.set_fact:
+        recovery_output_dir: "/tmp/opencode/fedora-recovery-{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+    - name: 运行下载和离线重启窗口故障注入
+      ansible.builtin.command:
+        argv:
+          - "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/../../.venv/bin/python"
+          - "{{ playbook_dir }}/staged.py"
+          - /tmp/opencode/fedora-recovery-inventory.yml
+          - "{{ recovery_output_dir }}"
+      changed_when: true
+
+    - name: 运行真实控制机进程故障注入
+      ansible.builtin.command:
+        argv:
+          - "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/../../.venv/bin/python"
+          - "{{ playbook_dir }}/run.py"
+          - /tmp/opencode/fedora-recovery-inventory.yml
+          - "{{ recovery_output_dir }}"
+      changed_when: true

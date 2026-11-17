@@ -1,0 +1,14 @@
+#cloud-config
+hostname: {{ libvirt_hostname }}
+manage_etc_hosts: true
+ssh_pwauth: false
+disable_root: true
+package_update: false
+users:
+  - name: {{ libvirt_ssh_user }}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {{ libvirt_ssh_public_key }}

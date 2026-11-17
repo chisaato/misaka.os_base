@@ -1,0 +1,93 @@
+---
+# 为了防止有些机房出毛病,这里手工设定 DNS
+- name: 设定 PVE hosts
+  ansible.builtin.template:
+    mode: "0644"
+    src: pve-hosts.j2
+    dest: /etc/hosts
+  when: pve_on_debian_hosts and ansible_facts['distribution'] == 'Debian'
+
+# 直接向 /etc/resolv.conf 写入一个 DNS
+# 注意:目标机若使用 systemd-resolved,/etc/resolv.conf 通常是指向 stub 的符号链接,
+# 直接覆盖会产生冲突,必要时请关闭 pve_on_debian_manage_resolv_conf
+- name: 写入 DNS
+  ansible.builtin.template:
+    mode: "0644"
+    src: pve-resolv.j2
+    dest: /etc/resolv.conf
+  when: pve_on_debian_manage_resolv_conf and ansible_facts['distribution'] == 'Debian'
+
+- name: 跳过:Debian 专用角色
+  ansible.builtin.debug:
+    msg: "跳过:Debian 专用角色"
+  when: ansible_facts['distribution'] != 'Debian'
+
+# block 级 when 会传导给内部任务
+- name: PVE 安装主体
+  become: true
+  when: ansible_facts['distribution'] == 'Debian'
+  block:
+    - name: 安装前确保 hostname 解析到非回环地址
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - >-
+            import socket, ipaddress;
+            addresses={row[4][0] for row in socket.getaddrinfo(socket.gethostname(), None)};
+            assert any(not ipaddress.ip_address(ip).is_loopback and not ipaddress.ip_address(ip).is_unspecified
+            for ip in addresses), 'hostname 必须解析到可访问的非回环地址';
+            print(sorted(addresses))
+      changed_when: false
+
+    - name: "检查当前 Debian 版本是否支持安装 PVE"
+      when: ansible_facts['distribution_major_version'] | int not in pve_on_debian_supported_debian_versions
+      ansible.builtin.fail:
+        msg: "当前 Debian 版本不支持安装 PVE,目前受支持的版本是 {{ pve_on_debian_supported_debian_versions }}"
+
+    # Debian 系统源渲染委托给 debian_repo,保留其默认目标版本 (当前系统);
+    # 需要跨版本渲染时在此 include 处用 vars: 覆盖
+    # debian_repo_target_codename / debian_repo_target_major_version
+    - name: "配置 Debian 系统源 (委托 debian_repo 渲染)"
+      ansible.builtin.include_role:
+        name: debian_repo
+
+    - name: "删除 PVE 企业源"
+      ansible.builtin.file:
+        state: absent
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/sources.list.d/pve-enterprise.list
+        - /etc/apt/sources.list.d/pve-enterprise.sources
+
+    - name: "配置 PVE 安装源"
+      ansible.builtin.include_tasks: pve_install_source.yml
+
+    - name: "全面升级系统"
+      when: pve_on_debian_full_upgrade
+      ansible.builtin.apt:
+        upgrade: full
+        update_cache: true
+      register: pve_on_debian_upgrade
+      retries: 3
+      delay: 10
+      until: pve_on_debian_upgrade is succeeded
+
+    - name: 安装 PVE 软件包
+      ansible.builtin.apt:
+        name:
+          - proxmox-ve
+          - postfix
+          - open-iscsi
+          - chrony
+        state: present
+      register: pve_on_debian_packages
+      retries: 3
+      delay: 10
+      until: pve_on_debian_packages is succeeded
+
+    - name: 卸载 os-prober
+      ansible.builtin.apt:
+        name:
+          - os-prober
+        state: absent

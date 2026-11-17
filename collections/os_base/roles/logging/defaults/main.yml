@@ -1,0 +1,14 @@
+---
+logging_journald_storage: persistent
+logging_journald_compress: true
+# 兼容旧入口的 inventory/group_vars/host_vars 设置。
+logging_journald_system_max_use: "{{ systemd_override_journald_max_usage | default('4G') }}"
+logging_journald_system_keep_free: 1G
+logging_journald_runtime_max_use: 50M
+logging_journald_max_retention_sec: 1month
+logging_journald_max_file_sec: 1month
+logging_journald_sync_interval_sec: 5m
+logging_journald_forward_to_syslog: false
+
+# 每项包含 name、paths 列表，可选 options 列表。
+logging_logrotate_rules: []

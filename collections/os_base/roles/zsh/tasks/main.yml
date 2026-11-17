@@ -1,0 +1,61 @@
+# - name: 告知当前家目录
+#   ansible.builtin.debug:
+#     msg:
+#       - "当前家目录为 {{ ansible_facts['env'].HOME }}/.zi"
+#       - "强制移除 .zi 为 {{ force_remove_zi }}"
+#       - "条件为 {{ force_remove_zi is true }}"
+
+- name: 移除 .zi 目录
+  when: zsh_force_remove_zi
+  ansible.builtin.file:
+    path: "{{ ansible_facts['env'].HOME }}/.zi"
+    state: absent
+  register: zsh_remove_zi
+
+- name: 渲染 ZSH 配置文件
+  ansible.builtin.template:
+    mode: "0644"
+    src: "{{ role_path }}/templates/zshrc.j2"
+    dest: "{{ ansible_facts['env'].HOME }}/.zshrc"
+
+- name: 渲染 zi 片段
+  ansible.builtin.template:
+    mode: "0644"
+    src: "{{ role_path }}/templates/zi-snippet-full.zsh.j2"
+    dest: "{{ ansible_facts['env'].HOME }}/.zi-snippet-full.zsh"
+
+# - name: 渲染 zprofile 配置
+#   async: 0
+#   poll: 5
+#   ansible.builtin.template:
+#     mode: "0644"
+#     src: "{{ role_path }}/templates/zprofile.j2"
+#     dest: "{{ ansible_facts['env'].HOME }}/.zprofile"
+
+- name: 拷贝 p10k 配置文件
+  ansible.builtin.copy:
+    mode: "0644"
+    src: "{{ role_path }}/files/p10k.zsh"
+    dest: "{{ ansible_facts['env'].HOME }}/.p10k.zsh"
+
+# 创建 ~/.zi/completions 目录以维持部分脚本兼容性
+- name: 创建 ~/.zi/completions 目录
+  ansible.builtin.file:
+    mode: "0755"
+    path: "{{ ansible_facts['env'].HOME }}/.zi/completions"
+    state: directory
+
+# 修改成 ZSH 前做一个准备以防悲剧导致无法连接服务器
+# - name: 检查 ZSH 是否存在
+#   ansible.builtin.stat:
+#     path: /bin/zsh
+#   register: zsh_check
+
+# - name: 更改默认 Shell 为 zsh
+#   become: true
+#   # ansible.builtin.command: "chsh -s /usr/bin/zsh {{ ansible_facts['env'].USER }}"
+#   when: zsh_check.stat.exists
+#   ansible.builtin.user:
+#     name: "{{ ansible_facts['env'].USER }}"
+#     shell: /bin/zsh
+#   changed_when: false

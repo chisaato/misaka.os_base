@@ -1,0 +1,18 @@
+---
+driver:
+  name: vagrant
+  provider:
+    name: libvirt
+    type: libvirt
+platforms:
+  - name: fedora-45
+    box: fedora/45-cloud-base
+    memory: 2048
+    cpus: 4
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_ssh_user: vagrant
+    ansible_become: true
+verifier:
+  name: ansible

@@ -1,0 +1,63 @@
+---
+- name: 上传状态机脚本
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/roles/dist_upgrade_state/files/dist_upgrade_state.py"
+    dest: /run/dist_upgrade_state.py
+    mode: "0755"
+
+- name: 两个进程抢同一把目录锁
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, subprocess, time
+        from pathlib import Path
+        root = "/var/lib/misaka/dist-upgrade"
+        script = "/run/dist_upgrade_state.py"
+        common = [script, "lock-acquire", "--root", root, "--boot-id", "probe", "--lease-until", str(int(time.time()) + 120), "--controller", "probe"]
+        first = subprocess.run(["python3", *common, "--token", "holder"], text=True, capture_output=True, check=False)
+        time.sleep(0.2)
+        second = subprocess.run(["python3", *common, "--token", "other"], text=True, capture_output=True, check=False)
+        print(json.dumps({"first": json.loads(first.stdout), "second": json.loads(second.stdout)}))
+  register: fedora_dist_upgrade_lock_race
+  changed_when: false
+
+- name: 只有先到的进程持有锁
+  ansible.builtin.assert:
+    that:
+      - (fedora_dist_upgrade_lock_race.stdout | from_json).first.acquired | bool
+      - not ((fedora_dist_upgrade_lock_race.stdout | from_json).second.acquired | bool)
+    fail_msg: "目录锁没有挡住第二个进程：{{ fedora_dist_upgrade_lock_race.stdout }}"
+
+- name: 结束持有者后按陈旧规则接管
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, os, signal, time
+        from pathlib import Path
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("state", "/run/dist_upgrade_state.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        root = Path("/var/lib/misaka/dist-upgrade")
+        owner = mod.read_owner(root / "lock.d")
+        os.kill(int(owner["holder_pid"]), signal.SIGTERM)
+        time.sleep(0.2)
+        taken = mod.lock_takeover(root, "other", "probe", int(time.time()) + 60, "probe", now=int(time.time()))
+        mod.lock_release(root, "other")
+        print(json.dumps({"takeover": taken["takeover"]}))
+  register: fedora_dist_upgrade_lock_takeover_probe
+  changed_when: false
+
+- name: 接管必须发生
+  ansible.builtin.assert:
+    that:
+      - (fedora_dist_upgrade_lock_takeover_probe.stdout | from_json).takeover | bool
+
+- name: 探针结束后删除锁目录，避免角色看见残留
+  ansible.builtin.file:
+    path: /var/lib/misaka/dist-upgrade
+    state: absent

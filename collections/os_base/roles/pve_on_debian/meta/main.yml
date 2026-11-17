@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  author: chisaato <catsreporter@proton.me>
+  description: 在 Debian 上安装 Proxmox VE
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+        - trixie
+
+  galaxy_tags:
+    - linux
+    - infrastructure
+
+dependencies: []

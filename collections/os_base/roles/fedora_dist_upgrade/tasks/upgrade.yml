@@ -1,0 +1,4 @@
+---
+- name: 升级步骤已经拆到 stages
+  ansible.builtin.fail:
+    msg: "tasks/upgrade.yml 已停用。fedora_dist_upgrade 现在按 preflight/prepared/downloaded/reboot_requested/verified/completed 推进。"

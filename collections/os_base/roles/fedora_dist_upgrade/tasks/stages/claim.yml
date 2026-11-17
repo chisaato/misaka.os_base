@@ -1,0 +1,22 @@
+---
+- name: 读取根文件系统真实剩余空间
+  become: true
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import os; s=os.statvfs('/'); print(s.f_bavail*s.f_frsize)"
+  register: fedora_dist_upgrade_free_space
+  changed_when: false
+
+- name: 空间不足时在建立 marker 前拒绝
+  ansible.builtin.assert:
+    that:
+      - fedora_dist_upgrade_free_space.stdout | int >= fedora_dist_upgrade_min_free_bytes | int
+    fail_msg: "根文件系统空间不足，不能安全下载并执行大版本升级。"
+
+- name: 预检只记录身份和目标，不安装软件包
+  ansible.builtin.debug:
+    msg: >-
+      将为 {{ fedora_dist_upgrade_observed.os }} → {{ fedora_dist_upgrade_decision.effective_target }}
+      建立 marker。磁盘与发布版本检查已在判定中完成。

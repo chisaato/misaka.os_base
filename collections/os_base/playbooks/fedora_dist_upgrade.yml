@@ -1,0 +1,10 @@
+- name: Fedora 大版本更新
+  gather_facts: true
+  hosts: all
+  # host_geo 由 inventory 提供，例如：
+  #   host_geo:
+  #     country: cn   # 未设置时角色默认按 cn 处理
+  roles:
+    - role: misaka.os_base.fedora_repo
+    - role: misaka.os_base.fedora_init
+    - role: misaka.os_base.fedora_dist_upgrade

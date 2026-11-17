@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: chisaato <catsreporter@proton.me>
+  description: 初始化 AlmaLinux 源
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: AlmaLinux
+      versions:
+        - all
+
+  galaxy_tags:
+    - linux
+    - infrastructure
+
+dependencies: []

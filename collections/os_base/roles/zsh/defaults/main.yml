@@ -1,0 +1,14 @@
+---
+zsh_all_package_home: "{{ lookup('env', 'USER') }}/.buildTools"
+
+# 国内 GitHub / GitLab 镜像（默认为空，自动回退到官方直连；可按需覆盖为可用镜像或自建反代）
+# 例如:
+# zsh_github_repo_mirror_cn: "ghproxy.net/https://github.com"
+# zsh_gitlab_repo_mirror_cn: "gitlab.com"
+zsh_github_repo_mirror_cn: ""
+zsh_gitlab_repo_mirror_cn: ""
+
+# 如果你希望强制迁移所有插件的 Git 仓库地址,
+# 或者清理老旧插件,以强制 zi 重新初始化
+# 请覆盖此变量为 true
+zsh_force_remove_zi: false

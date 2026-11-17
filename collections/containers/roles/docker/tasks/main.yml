@@ -1,0 +1,9 @@
+# 导入 Podman 任务
+- name: 导入 Podman 任务
+  ansible.builtin.include_tasks: "podman/main.yaml"
+  when: docker_use_podman
+
+# 导入 Docker 任务
+- name: 导入 Docker 任务
+  ansible.builtin.include_tasks: "docker/main.yaml"
+  when: not docker_use_podman

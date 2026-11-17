@@ -1,0 +1,148 @@
+---
+# Molecule 26 自管驱动（driver.name: default, options.managed: true）的 create。
+# 成功后必须写出 molecule_instance_config，字段为 instance/address/user/port/identity_file。
+# 只使用已经活跃的 default 网络，不执行 net-define / net-start / net-destroy / reload。
+- name: Create libvirt instances
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    libvirt_support_dir: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/../../shared/molecule/libvirt"
+  tasks:
+    - name: 载入 libvirt 生命周期默认值
+      ansible.builtin.include_vars:
+        file: "{{ libvirt_support_dir }}/defaults.yml"
+
+    - name: 用场景 driver.libvirt 覆盖默认值
+      ansible.builtin.set_fact:
+        "{{ libvirt_override_item.key }}": "{{ libvirt_override_item.value }}"
+      loop: "{{ (molecule_yml.driver.libvirt | default({}, true) | dict2items) }}"
+      loop_control:
+        loop_var: libvirt_override_item
+        label: "{{ libvirt_override_item.key }}"
+
+    - name: 确认本机具备 virsh、qemu-img、genisoimage 与 ssh-keygen
+      ansible.builtin.command:
+        argv:
+          - bash
+          - -lc
+          - command -v {{ libvirt_tool_item }}
+      loop:
+        - virsh
+        - qemu-img
+        - genisoimage
+        - ssh-keygen
+        - curl
+        - sha512sum
+        - sha256sum
+      loop_control:
+        loop_var: libvirt_tool_item
+      changed_when: false
+      register: libvirt_tools
+
+    - name: 缺少生命周期工具则停止
+      ansible.builtin.assert:
+        that:
+          - libvirt_tools.results | selectattr('rc', 'ne', 0) | list | length == 0
+        fail_msg: "virsh / qemu-img / genisoimage / ssh-keygen / curl / sha512sum / sha256sum 至少一项不在 PATH"
+
+    - name: 确认 qemu:///system 可访问且目标网络已经活跃
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - net-info
+          - "{{ libvirt_network }}"
+      register: libvirt_net_info
+      changed_when: false
+
+    - name: 网络未活跃则停止，不执行 net-start
+      ansible.builtin.assert:
+        that:
+          - libvirt_net_info.rc == 0
+          - >-
+            libvirt_net_info.stdout is search('(?m)^活跃：\\s+是\\s*$')
+            or libvirt_net_info.stdout is search('(?m)^Active:\\s+yes\\s*$')
+        fail_msg: >-
+          {{ libvirt_uri }} 不可访问，或网络 {{ libvirt_network }} 未处于活跃。
+          本生命周期不会执行 net-start / net-define / reload。
+
+    - name: 记录创建前的域清单
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - list
+          - --all
+          - --name
+      register: libvirt_domains_before
+      changed_when: false
+
+    - name: 生成本次运行标识
+      ansible.builtin.set_fact:
+        libvirt_run_id: >-
+          {{ lookup('env', 'MOLECULE_SCENARIO_NAME') }}-{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}-{{ 999999 | random | string }}
+
+    - name: 规范化运行标识
+      ansible.builtin.set_fact:
+        libvirt_run_id: "{{ libvirt_run_id | trim | regex_replace('[^A-Za-z0-9._-]', '-') }}"
+
+    - name: 准备本次运行目录
+      ansible.builtin.file:
+        path: "{{ libvirt_path_item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ libvirt_cache_root }}/base"
+        - "{{ libvirt_cache_root }}/runs/{{ libvirt_run_id }}"
+      loop_control:
+        loop_var: libvirt_path_item
+
+    - name: 发现唯一的 UEFI 固件描述，找不到就停止
+      ansible.builtin.include_tasks: "{{ libvirt_support_dir }}/resolve_firmware.yml"
+
+    - name: 按来源发现并校验镜像
+      ansible.builtin.include_tasks: "{{ libvirt_support_dir }}/resolve_image.yml"
+
+    - name: 初始化 instance config
+      ansible.builtin.set_fact:
+        instance_conf: []
+
+    - name: 为每个平台创建实例
+      ansible.builtin.include_tasks:
+        file: "{{ libvirt_support_dir }}/create_instance.yml"
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: 写出 Molecule instance config
+      ansible.builtin.copy:
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"
+        content: |
+          # Molecule managed
+
+          {{ instance_conf | to_json | from_json | to_yaml }}
+
+    - name: 记录创建后的域清单
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - list
+          - --all
+          - --name
+      register: libvirt_domains_after
+      changed_when: false
+
+    - name: 确认没有改动创建前已存在的域
+      ansible.builtin.assert:
+        that:
+          - >-
+            libvirt_domains_before.stdout_lines | difference(libvirt_domains_after.stdout_lines) | length == 0
+        fail_msg: >-
+          创建过程中原有域消失：
+          {{ libvirt_domains_before.stdout_lines | difference(libvirt_domains_after.stdout_lines) }}

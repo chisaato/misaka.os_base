@@ -1,0 +1,22 @@
+fedora_repo_rpmfusion_nonfree_tainted_repos:
+  - repo_id: rpmfusion-nonfree-tainted
+    repo_name: RPM Fusion for Fedora $releasever - Nonfree tainted
+    repo_baseurl: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/nonfree/fedora/tainted/$releasever/$basearch/
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-nonfree-fedora-$releasever
+    repo_metalink: https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-$releasever&arch=$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/rpmfusion-nonfree-tainted.mirrorlist
+  - repo_id: rpmfusion-nonfree-tainted-debuginfo
+    repo_name: RPM Fusion for Fedora $releasever - Nonfree tainted - Debug
+    repo_baseurl: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/nonfree/fedora/tainted/$releasever/$basearch/debug/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-nonfree-fedora-$releasever
+    repo_metalink: https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-debug-$releasever&arch=$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/rpmfusion-nonfree-tainted-debuginfo.mirrorlist
+  - repo_id: rpmfusion-nonfree-tainted-source
+    repo_name: RPM Fusion for Fedora $releasever - Nonfree tainted - Source
+    repo_baseurl: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/nonfree/fedora/tainted/$releasever/SRPMS/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-nonfree-fedora-$releasever
+    repo_metalink: https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-source-$releasever&arch=$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/rpmfusion-nonfree-tainted-source.mirrorlist

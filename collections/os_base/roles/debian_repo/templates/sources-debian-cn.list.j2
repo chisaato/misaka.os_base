@@ -1,0 +1,77 @@
+# 主源
+{% for mirror in debian_repo_mirror_list %}
+deb https://{{ mirror }}/debian/ {{ debian_repo_target_codename }} main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 更新源
+{% for mirror in debian_repo_mirror_list %}
+deb https://{{ mirror }}/debian/ {{ debian_repo_target_codename }}-updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 反向移植源
+{% for mirror in debian_repo_mirror_list %}
+deb https://{{ mirror }}/debian/ {{ debian_repo_target_codename }}-backports main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 安全更新源
+{% for mirror in debian_repo_mirror_list %}
+{% if debian_repo_target_major_version is version('11', '>=') %}
+{# Debian 11 开始此处需要修改 #}
+deb https://{{ mirror }}/debian-security {{ debian_repo_target_codename }}-security main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% else %}
+deb https://{{ mirror }}/debian-security {{ debian_repo_target_codename }}/updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endif %}
+{% endfor %}
+
+{% if debian_repo_enable_testing == true %}
+# 测试源
+{% for mirror in debian_repo_mirror_list %}
+deb https://{{ mirror }}/debian testing main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 测试更新源
+{% for mirror in debian_repo_mirror_list %}
+deb https://{{ mirror }}/debian-security testing-security main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+{% endif %}
+
+{% if debian_repo_enable_unstable == true %}
+# UnStable 源
+{% for mirror in debian_repo_mirror_list %}
+deb https://{{ mirror }}/debian unstable main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+{% endif %}
+
+{% if debian_repo_set_apt_src_repo == true %}
+# 主源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src https://{{ mirror }}/debian/ {{ debian_repo_target_codename }} main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 更新源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src https://{{ mirror }}/debian/ {{ debian_repo_target_codename }}-updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 反向移植源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src https://{{ mirror }}/debian/ {{ debian_repo_target_codename }}-backports main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 安全更新源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src https://{{ mirror }}/debian-security {{ debian_repo_target_codename }}/updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+
+{% if debian_repo_enable_testing == true %}
+# 测试源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src https://{{ mirror }}/debian testing main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+# 测试更新源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src http://{{ mirror }}/debian-security testing-security main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+{% endif %}
+
+{% if debian_repo_enable_unstable == true %}
+# UnStable 源 src
+{% for mirror in debian_repo_mirror_list %}
+deb-src http://{{ mirror }}/debian unstable main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endfor %}
+{% endif %}
+
+{% endif %}

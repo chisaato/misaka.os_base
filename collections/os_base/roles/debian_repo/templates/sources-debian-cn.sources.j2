@@ -1,0 +1,63 @@
+# 主源与更新源
+{% for mirror in debian_repo_mirror_list %}
+Types: deb
+URIs: https://{{ mirror }}/debian/
+Suites: {{ debian_repo_target_codename }} {{ debian_repo_target_codename }}-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+{% endfor %}
+# 安全源
+{% for mirror in debian_repo_mirror_list %}
+Types: deb
+URIs: https://{{ mirror }}/debian-security
+Suites: {{ debian_repo_target_codename }}-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+{% endfor %}
+{% if debian_repo_enable_testing == true %}
+# 测试源
+{% for mirror in debian_repo_mirror_list %}
+Types: deb
+URIs: https://{{ mirror }}/debian/
+Suites: testing
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: https://{{ mirror }}/debian-security
+Suites: testing-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+{% endfor %}
+{% endif %}
+{% if debian_repo_enable_unstable == true %}
+# 不稳定源 (Sid)
+{% for mirror in debian_repo_mirror_list %}
+Types: deb
+URIs: https://{{ mirror }}/debian/
+Suites: unstable
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+{% endfor %}
+{% endif %}
+{% if debian_repo_set_apt_src_repo == true %}
+# 源码源 (deb-src)
+{% for mirror in debian_repo_mirror_list %}
+Types: deb-src
+URIs: https://{{ mirror }}/debian/
+Suites: {{ debian_repo_target_codename }} {{ debian_repo_target_codename }}-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb-src
+URIs: https://{{ mirror }}/debian-security
+Suites: {{ debian_repo_target_codename }}-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+{% endfor %}
+{% endif %}

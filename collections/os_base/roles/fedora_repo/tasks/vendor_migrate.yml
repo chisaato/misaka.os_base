@@ -1,0 +1,34 @@
+---
+- name: 清理确认为角色旧版渲染的 vendor repo 文件
+  become: true
+  ansible.builtin.file:
+    path: "/etc/yum.repos.d/{{ item }}"
+    state: absent
+  loop:
+    - fedora.repo
+    - fedora-updates.repo
+    - fedora-updates-testing.repo
+    - fedora-cisco-openh264.repo
+    - rpmfusion-free.repo
+    - rpmfusion-free-updates.repo
+    - rpmfusion-free-updates-testing.repo
+    - rpmfusion-nonfree.repo
+    - rpmfusion-nonfree-updates.repo
+    - rpmfusion-nonfree-updates-testing.repo
+
+- name: 搜索旧 vendor repo 的 rpmsave
+  become: true
+  ansible.builtin.find:
+    paths: /etc/yum.repos.d
+    patterns:
+      - "fedora*.rpmsave"
+      - "rpmfusion-free*.rpmsave"
+      - "rpmfusion-nonfree*.rpmsave"
+  register: fedora_repo_vendor_rpmsave
+
+- name: 清除旧 vendor repo 的 rpmsave
+  become: true
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ fedora_repo_vendor_rpmsave.files }}"

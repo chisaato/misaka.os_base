@@ -1,0 +1,21 @@
+# Molecule driver 配置模板
+# 两个 collection 的 molecule.yml 都使用 Vagrant + libvirt 驱动
+# 复制此模板到 scenario 目录下调整为具体平台矩阵
+
+driver:
+  name: vagrant
+  provider:
+    type: libvirt
+    name: libvirt
+
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_ssh_user: vagrant
+    ansible_become: true
+  log: true
+  lint:
+    name: ansible-lint
+
+verifier:
+  name: ansible

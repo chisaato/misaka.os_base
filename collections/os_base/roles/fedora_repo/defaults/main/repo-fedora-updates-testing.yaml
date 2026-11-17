@@ -1,0 +1,22 @@
+fedora_repo_updates_testing_repos:
+  - repo_id: updates-testing
+    repo_name: Fedora $releasever - $basearch - Test Updates
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/updates/testing/$releasever/Everything/$basearch/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=updates-testing-f$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-updates-testing.mirrorlist
+  - repo_id: updates-testing-debuginfo
+    repo_name: Fedora $releasever - $basearch - Test Updates Debug
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/updates/testing/$releasever/Everything/$basearch/debug/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=updates-testing-debug-f$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-updates-testing-debuginfo.mirrorlist
+  - repo_id: updates-testing-source
+    repo_name: Fedora $releasever - Test Updates Source
+    repo_baseurl: https://{{ fedora_repo_fedora_mirror }}/fedora/updates/testing/$releasever/Everything/source/tree/
+    repo_metalink: https://mirrors.fedoraproject.org/metalink?repo=updates-testing-source-f$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch
+    mirrorlist: file:///etc/dnf/mirrorlist/fedora-updates-testing-source.mirrorlist

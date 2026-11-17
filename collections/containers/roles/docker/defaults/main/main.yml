@@ -1,0 +1,93 @@
+docker_ce_mirror: "download.docker.com"
+# 同步了 docker-ce 的镜像站
+docker_ce_mirror_list:
+  # 企业镜像站扛把子
+  - mirrors.163.com
+  - mirrors.aliyun.com
+  - mirrors.tencent.com
+  - mirrors.cloud.tencent.com
+  # 华为,可能会限速
+  - mirrors.huaweicloud.com
+  # 高校镜像站
+  - mirrors.ustc.edu.cn
+  - mirrors.tuna.tsinghua.edu.cn
+  - mirrors.sustech.edu.cn
+  - mirrors.bfsu.edu.cn
+# 默认使用第一项,但是可以覆盖
+# docker_ce_mirror_cn: "{{ docker_ce_mirror_list[0] }}"
+# Debian apt 路径仍使用该镜像站获取 GPG key;Fedora repo 使用官方 key。
+docker_ce_mirror_cn: mirrors.ustc.edu.cn
+# Docker Hub 镜像加速站（若为空列表则不配置 mirror；可按需覆盖为可用镜像或自建反代）
+docker_registry_mirror:
+  - https://hub-proxy.zdr.ac.cn
+# Docker 启用 IPv6
+docker_enable_ipv6: false
+# Docker 自动处理防火墙,默认都是开的
+docker_enable_firewall: true
+#
+# 是否以 Podman 替代 Docker
+# Fedora 默认使用 Podman，其他发行版默认使用 Docker
+docker_use_podman: "{{ ansible_facts['distribution'] == 'Fedora' }}"
+# 是否启用 Podman 的 Docker 模拟 (安装 podman-docker)
+# 默认关闭：移除 podman-docker 并照常安装 docker-ce-cli，其余设置（如 socket 链接）仍保持生效
+docker_enable_podman_docker: false
+# 是否添加文件以禁用 podman docker 模拟提示
+docker_disable_podman_docker_emulate_hint: true
+# 是否禁用 podman compose 外部命令提示
+docker_disable_podman_compose_external_command_hint: true
+# 允许其他用户访问 podman 目前是允许 wheel 组的访问
+docker_podman_allow_user_access: true
+# 是否开启链接 /run/podman/podman.sock 到 /var/run/docker.sock
+docker_podman_enable_socket_link: true
+
+# 额外的 Podman 镜像站
+# 格式参考 K3s 的 registries.yaml，endpoint 填域名或域名:端口（不要带 https:// 前缀）
+# 默认留空；对于 gcr/quay/k8s/ghcr 等非 Docker Hub 仓库，公网通常无公开镜像，可按需配置自建反代
+docker_podman_registry_mirror: {}
+# 完整范例（支持端口与可选的 remark 字段）：
+# docker_podman_registry_mirror:
+#   docker.elastic.co:
+#     endpoint:
+#       - elastic-mirror.example.com
+#       - mirror.example.com:8443
+#     remark: Elastic
+#   gcr.io:
+#     endpoint:
+#       - gcr-mirror.example.com
+#     remark: GCR
+#   ghcr.io:
+#     endpoint:
+#       - ghcr-mirror.example.com
+#     remark: GHCR
+#   quay.io:
+#     endpoint:
+#       - quay-mirror.example.com
+#     remark: Quay
+#   registry.k8s.io:
+#     endpoint:
+#       - k8s-mirror.example.com
+#     remark: K8S
+#   nvcr.io:
+#     endpoint:
+#       - nvcr-mirror.example.com
+#     remark: NVCR
+#   lscr.io:
+#     endpoint:
+#       - lscr-mirror.example.com
+#     remark: LinuxServer.io
+#   mcr.microsoft.com:
+#     endpoint:
+#       - mcr-mirror.example.com
+#     remark: Microsoft
+#   registry.developers.crunchydata.com:
+#     endpoint:
+#       - crunchydata-mirror.example.com
+#     remark: CrunchyData
+#   registry.gitlab.com:
+#     endpoint:
+#       - gitlab-mirror.example.com
+#     remark: GitLab
+#   codeberg.org:
+#     endpoint:
+#       - codeberg-mirror.example.com
+#     remark: Codeberg

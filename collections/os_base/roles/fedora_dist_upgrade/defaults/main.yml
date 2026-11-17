@@ -1,0 +1,13 @@
+---
+# D1：未经批准不得改这个默认值。有活动 marker 时 marker 的 target 优先，显式冲突则拒绝。
+fedora_dist_upgrade_target_release: 44
+fedora_dist_upgrade_needs_upgrade: false
+# D3：保留为弃用别名，不改默认字面量。未设置 until 且为 true 时，下载后暂停，不再跑 post。
+fedora_dist_upgrade_skip_reboot: true
+fedora_dist_upgrade_download_retries: 5
+fedora_dist_upgrade_action: advance
+fedora_dist_upgrade_state_dir: /var/lib/misaka/dist-upgrade
+fedora_dist_upgrade_reboot_timeout: 3600
+fedora_dist_upgrade_lock_lease_seconds: "{{ fedora_dist_upgrade_reboot_timeout | int + 900 }}"
+fedora_dist_upgrade_min_free_bytes: 4294967296
+fedora_dist_upgrade_tested_profile: {}

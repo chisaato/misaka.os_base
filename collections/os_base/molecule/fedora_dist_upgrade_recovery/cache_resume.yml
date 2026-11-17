@@ -1,0 +1,21 @@
+---
+- name: 从新控制机读取旧缓存再恢复真实事实
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 证明测试确实读到了 43 缓存而不是空缓存
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution_major_version'] == '43'
+
+    - name: 角色必须自行刷新事实
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_dist_upgrade
+      vars:
+        fedora_dist_upgrade_until: completed
+
+    - name: 刷新后的真实事实必须为 44
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution_major_version'] == '44'

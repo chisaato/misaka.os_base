@@ -1,0 +1,6 @@
+{% for fedora_repo_rpmfusion_mirror_list_item in fedora_repo_rpmfusion_mirror_list %}
+{% if fedora_repo_add_development_to_repo %}
+https://{{ fedora_repo_rpmfusion_mirror_list_item }}/rpmfusion/nonfree/fedora/development/$releasever/Everything/$basearch/os/
+{% endif %}
+https://{{ fedora_repo_rpmfusion_mirror_list_item }}/rpmfusion/nonfree/fedora/releases/$releasever/Everything/$basearch/os/
+{% endfor %}

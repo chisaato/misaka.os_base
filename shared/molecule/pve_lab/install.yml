@@ -1,0 +1,8 @@
+---
+- name: 在已启动 Proxmox 内核的空载 VM 安装 PVE 8
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: misaka.os_base.pve_on_debian
+    - role: misaka.os_base.pve_init

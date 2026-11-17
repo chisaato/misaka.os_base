@@ -1,0 +1,32 @@
+---
+- name: 确保 history 目录只有 root 可进入
+  become: true
+  ansible.builtin.file:
+    path: "{{ fedora_dist_upgrade_state_dir }}/history"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: 把当前 marker 复制到 history
+  when: fedora_dist_upgrade_marker_stat.stat.exists
+  become: true
+  ansible.builtin.copy:
+    src: "{{ fedora_dist_upgrade_state_dir }}/fedora.json"
+    dest: "{{ fedora_dist_upgrade_state_dir }}/history/{{ fedora_dist_upgrade_archive_id }}.json"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: 放弃或陈旧时删除活动 marker
+  when: fedora_dist_upgrade_decision.decision in ['abandon', 'stale']
+  become: true
+  ansible.builtin.file:
+    path: "{{ fedora_dist_upgrade_state_dir }}/fedora.json"
+    state: absent
+
+- name: 归档后本步不再把旧文档当成 previous
+  when: fedora_dist_upgrade_decision.decision in ['abandon', 'stale']
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_marker: null

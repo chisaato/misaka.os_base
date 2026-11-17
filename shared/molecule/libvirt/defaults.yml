@@ -1,0 +1,31 @@
+---
+# 非 Vagrant 的 QEMU/KVM（libvirt）生命周期默认值。
+# 场景 molecule.yml 的 driver.libvirt 可覆盖同名键；不要在这里写死某次构建的镜像文件名或校验和。
+# 镜像名与 SHA 在 create 时从官方目录索引和 SHA512SUMS 解析，本文件只声明“要哪一种镜像”。
+
+libvirt_uri: qemu:///system
+# 使用宿主机已经活跃的 default NAT。禁止 net-define / net-start / net-destroy / reload。
+libvirt_network: default
+
+# debian-html | fedora-checksum | local-manifest。场景不写时保持原来的 Debian 目录索引。
+libvirt_image_source: debian-html
+libvirt_firmware_dir: /usr/share/qemu/firmware
+# Fedora CHECKSUM 的 PGP 校验默认关闭。打开时必须同时提供 libvirt_fedora_gpg_keyring，失败即拒绝。
+libvirt_fedora_checksum_pgp: false
+libvirt_image_index_url: https://cloud.debian.org/images/cloud/trixie/latest/
+libvirt_image_name_pattern: ^debian-13-generic-amd64[.]qcow2$
+libvirt_expected_distro: Debian
+libvirt_expected_major: "13"
+
+libvirt_memory_mib: 2048
+libvirt_vcpus: 2
+libvirt_disk_gib: 8
+libvirt_ssh_user: molecule
+libvirt_ssh_port: 22
+
+# 基镜像缓存与每次运行的 overlay/seed/密钥。不进 libvirt default 池，不写用户家目录。
+libvirt_cache_root: /tmp/opencode/misaka-molecule-libvirt
+# 证据与临时磁盘分离，避免 /tmp 清理导致结果丢失。
+libvirt_evidence_root: "{{ (lookup('env', 'XDG_STATE_HOME') or (lookup('env', 'HOME') ~ '/.local/state')) }}/misaka-os-base/validation"
+libvirt_ssh_wait_timeout: 300
+libvirt_ssh_wait_delay: 5

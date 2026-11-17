@@ -1,0 +1,17 @@
+---
+- name: 校验 Debian 12 到 13 的显式边界
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution_major_version'] | int in [12, 13]
+      - debian_dist_upgrade_target_version | int == 13
+      - debian_dist_upgrade_target_codename == 'trixie'
+      - debian_dist_upgrade_action in ['status', 'advance']
+      - >-
+        debian_dist_upgrade_until in ['', 'preflight', 'prepared', 'downloaded', 'minimal_upgraded',
+        'full_upgraded', 'reboot_requested', 'verified', 'completed']
+    fail_msg: 仅支持 Debian 12→13（允许目标系统事实收养）；目标不得小于当前版本或超出本期范围。
+
+- name: 解析安装与重启闸门（显式 until 优先于兼容 skip_reboot）
+  ansible.builtin.set_fact:
+    debian_dist_upgrade_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+    debian_dist_upgrade_effective_until: "{{ debian_dist_upgrade_until | default('', true) or 'downloaded' }}"

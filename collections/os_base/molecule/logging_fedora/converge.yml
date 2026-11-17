@@ -1,0 +1,33 @@
+---
+- name: 配置日志治理
+  hosts: all
+  become: true
+  vars:
+    # 验证旧变量兼容性，不手工覆盖容器判断。
+    systemd_override_journald_max_usage: 256M
+    logging_logrotate_rules:
+      - name: molecule_logging
+        paths:
+          - /var/log/molecule-logging/*.log
+        options:
+          - daily
+          - rotate 7
+          - missingok
+          - notifempty
+      - name: defaults
+        paths:
+          - /var/log/molecule-defaults/*.log
+  tasks:
+    - name: 配置 Fedora 国内镜像源
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_repo
+      when: ansible_facts['distribution'] == 'Fedora'
+
+    - name: 配置 Debian 国内镜像源
+      ansible.builtin.include_role:
+        name: misaka.os_base.debian_repo
+      when: ansible_facts['distribution'] == 'Debian'
+
+    - name: 加载 logging 角色
+      ansible.builtin.include_role:
+        name: misaka.os_base.logging

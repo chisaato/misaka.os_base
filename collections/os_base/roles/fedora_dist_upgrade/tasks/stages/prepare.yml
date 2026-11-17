@@ -1,0 +1,79 @@
+---
+- name: 打开 dnf 最快镜像
+  become: true
+  community.general.ini_file:
+    path: /etc/dnf/dnf.conf
+    section: main
+    option: fastestmirror
+    value: "true"
+    mode: "0644"
+
+- name: 设定 dnf 并发下载
+  become: true
+  community.general.ini_file:
+    path: /etc/dnf/dnf.conf
+    section: main
+    option: max_parallel_downloads
+    value: "20"
+    mode: "0644"
+
+- name: 移除不再使用的 modular 仓库包
+  become: true
+  ansible.builtin.dnf:
+    name: fedora-repos-modular
+    state: absent
+
+- name: 找出残留的 modular 仓库文件
+  become: true
+  ansible.builtin.find:
+    paths: /etc/yum.repos.d
+    patterns:
+      - fedora-modular*
+      - fedora-updates-modular*
+      - fedora-updates-testing-modular*
+  register: fedora_dist_upgrade_modular_repos
+
+- name: 删除残留的 modular 仓库文件
+  become: true
+  ansible.builtin.file:
+    path: "{{ fedora_dist_upgrade_modular_item.path }}"
+    state: absent
+  loop: "{{ fedora_dist_upgrade_modular_repos.files }}"
+  loop_control:
+    loop_var: fedora_dist_upgrade_modular_item
+    label: "{{ fedora_dist_upgrade_modular_item.path }}"
+
+- name: 把当前系统的软件包升到本版本最新  # noqa: package-latest
+  become: true
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+  register: fedora_dist_upgrade_system_upgrade
+  retries: 3
+  delay: 10
+  until: fedora_dist_upgrade_system_upgrade is succeeded
+
+- name: 检查目标版本的升级前任务
+  ansible.builtin.stat:
+    path: "{{ role_path }}/tasks/pre/fc_{{ fedora_dist_upgrade_decision.effective_target }}.yml"
+  delegate_to: localhost
+  register: fedora_dist_upgrade_pre_task_file
+
+- name: 执行目标版本的升级前任务
+  when: fedora_dist_upgrade_pre_task_file.stat.exists
+  ansible.builtin.include_tasks: "pre/fc_{{ fedora_dist_upgrade_decision.effective_target }}.yml"
+
+- name: 检查准备阶段是否还要重启
+  become: true
+  ansible.builtin.command:
+    argv: ["dnf5", "needs-restarting", "-r"]
+  register: fedora_dist_upgrade_needs_restarting
+  changed_when: false
+  failed_when: fedora_dist_upgrade_needs_restarting.rc not in [0, 1]
+
+- name: 准备阶段重启以使新内核生效
+  when: fedora_dist_upgrade_needs_restarting.rc == 1
+  become: true
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ fedora_dist_upgrade_reboot_timeout }}"

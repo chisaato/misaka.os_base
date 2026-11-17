@@ -1,0 +1,11 @@
+{% for repo in docker_ce_repos %}
+[{{ repo.repo_id }}]
+name={{ repo.repo_name }}
+{# GPG key 固定官方地址:密钥体量小,签名验证不依赖下载镜像站。 #}
+baseurl={{ repo.repo_baseurl }}
+gpgkey={{ repo.repo_gpgkey }}
+enabled={{ repo.repo_enabled }}
+gpgcheck=1
+skip_if_unavailable=False
+
+{% endfor %}

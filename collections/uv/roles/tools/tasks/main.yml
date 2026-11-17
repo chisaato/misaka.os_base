@@ -1,0 +1,39 @@
+---
+- name: 校验工具清单
+  ansible.builtin.assert:
+    that:
+      - item.name is string
+      - item.name | length > 0
+      - item.with | default([]) is not string
+      - item.with_executables_from | default([]) is not string
+    fail_msg: "tools_list 每项必须有非空 name；with / with_executables_from 必须是列表"
+  loop: "{{ tools_list }}"
+  loop_control:
+    label: "{{ item.name | default('缺失 name') }}"
+
+- name: 解析 uv 可执行文件
+  when: tools_bin | length == 0
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -lc
+      - command -v {{ tools_executable | quote }}
+  environment:
+    PATH: "{{ (tools_extra_paths + [ansible_facts.env.PATH | default('/usr/bin:/bin')]) | join(':') }}"
+  register: tools_which
+  changed_when: false
+  failed_when: false
+
+- name: 确认 uv 可用
+  ansible.builtin.assert:
+    that:
+      - (tools_bin | length > 0) or (tools_which.rc | default(1) == 0)
+      - (tools_bin | length > 0) or (tools_which.stdout | default('') | trim | length > 0)
+    fail_msg: "未找到 {{ tools_executable }}，请先安装 uv 或设置 tools_bin"
+
+- name: 安装声明的 uv tools
+  ansible.builtin.include_tasks: install.yml
+  loop: "{{ tools_list }}"
+  loop_control:
+    loop_var: uv_tool
+    label: "{{ uv_tool.name }}"

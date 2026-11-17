@@ -1,0 +1,23 @@
+---
+- name: 写入 Debian 12 UEFI 冒烟标记
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: 确保标记目录存在
+      ansible.builtin.file:
+        path: /etc/misaka-molecule
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: 写入测试标记
+      ansible.builtin.copy:
+        dest: /etc/misaka-molecule/vm-smoke
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          marker=vm_uefi_debian12
+          platform=debian12

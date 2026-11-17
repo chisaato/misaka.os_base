@@ -1,0 +1,10 @@
+---
+# 这不是 Molecule verify。Molecule 场景直接读客户机事实，不引用本 playbook。
+# 这里只做只读 status，避免再走下载或 post。
+- name: Fedora 大版本更新状态
+  hosts: all
+  gather_facts: true
+  vars:
+    fedora_dist_upgrade_action: status
+  roles:
+    - role: misaka.os_base.fedora_dist_upgrade

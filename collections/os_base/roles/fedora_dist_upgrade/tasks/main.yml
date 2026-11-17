@@ -1,0 +1,14 @@
+---
+- name: 在发行版守卫之前强制刷新事实
+  ansible.builtin.setup:
+
+- name: Fedora 升级主体
+  when: ansible_facts['distribution'] == 'Fedora'
+  block:
+    - name: 执行 Fedora 专用状态机
+      ansible.builtin.include_tasks: fedora.yml
+
+- name: 非 Fedora 只说明跳过，不结束调用方后续任务
+  when: ansible_facts['distribution'] != 'Fedora'
+  ansible.builtin.debug:
+    msg: "fedora_dist_upgrade 只适用于 Fedora，当前为 {{ ansible_facts['distribution'] }}，已跳过。"

@@ -1,0 +1,41 @@
+---
+# Debian 13 单机冒烟。driver.name 必须是 Molecule 26 的自管驱动 default。
+# 生命周期 playbook 在 shared/molecule/libvirt，不使用 vagrant。
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: default
+  options:
+    managed: true
+  libvirt:
+    libvirt_image_index_url: https://cloud.debian.org/images/cloud/trixie/latest/
+    libvirt_image_name_pattern: ^debian-13-generic-amd64[.]qcow2$$
+    libvirt_expected_distro: Debian
+    libvirt_expected_major: "13"
+platforms:
+  - name: debian13
+provisioner:
+  name: ansible
+  log: true
+  playbooks:
+    create: ../../../../shared/molecule/libvirt/create.yml
+    destroy: ../../../../shared/molecule/libvirt/destroy.yml
+ansible:
+  cfg:
+    defaults:
+      host_key_checking: false
+  env:
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../.dev
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - destroy
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
+verifier:
+  name: ansible

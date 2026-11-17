@@ -1,0 +1,38 @@
+---
+- name: 读取准备断电的域而不是只信任清单
+  ansible.builtin.command:
+    argv: ["virsh", "-c", "{{ libvirt_uri }}", "dumpxml", "{{ libvirt_manifest.domain }}"]
+  register: libvirt_relaunch_xml
+  changed_when: false
+
+- name: 精确核对 UUID 与 metadata 以及磁盘和 NVRAM
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys, xml.etree.ElementTree as ET
+        from pathlib import Path
+        manifest = json.loads(sys.argv[1])
+        root = ET.fromstring(sys.stdin.read())
+        ns = '{https://misaka.local/molecule/libvirt}'
+        assert root.findtext('name') == manifest['domain']
+        assert root.findtext('uuid') == manifest['uuid']
+        meta = root.find('metadata/' + ns + 'molecule')
+        assert meta is not None
+        assert meta.findtext(ns + 'managed') == 'true'
+        assert meta.findtext(ns + 'run_id') == manifest['run_id']
+        assert meta.findtext(ns + 'scenario') == manifest['scenario']
+        disks = [node.get('file') for node in root.findall('devices/disk/source')]
+        assert sorted(disks) == sorted([manifest['overlay'], manifest['seed']])
+        assert root.findtext('os/nvram') == manifest['nvram']
+        directory = Path(manifest['overlay']).parent
+        for key, filename in [('overlay','overlay.qcow2'),('seed','seed.iso'),('nvram','nvram.fd'),('serial_log','serial.log')]:
+            path = Path(manifest[key])
+            assert path == directory / filename
+            assert path.resolve() == path
+        print('ownership verified')
+      - "{{ libvirt_manifest | to_json }}"
+  args:
+    stdin: "{{ libvirt_relaunch_xml.stdout }}"
+  changed_when: false

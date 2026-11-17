@@ -1,0 +1,14 @@
+---
+# 注:本角色主体任务尚未实现,待实现后放入下方 block 并保持守卫结构
+- name: 跳过:AlmaLinux 专用角色
+  ansible.builtin.debug:
+    msg: "跳过:AlmaLinux 专用角色"
+  when: ansible_facts['distribution'] != 'AlmaLinux'
+
+# block 级 when 会传导给内部任务
+- name: AlmaLinux 源配置主体
+  when: ansible_facts['distribution'] == 'AlmaLinux'
+  block:
+    - name: 占位:主体任务待实现
+      ansible.builtin.debug:
+        msg: "alma_repo 主体任务尚未实现,仓库定义数据位于 defaults/main/repo-almalinux-*.yaml"

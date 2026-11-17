@@ -1,0 +1,18 @@
+---
+- name: 在 ISO 成品上验证幂等配置写入
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 断言镜像发行版与预期一致
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - ansible_facts['distribution_major_version'] | int == validation_major | int
+          - ansible_facts['virtualization_type'] == 'kvm'
+
+    - name: 写入集成验证标记
+      ansible.builtin.copy:
+        dest: /etc/misaka-image-validation
+        content: "source=packer-local-manifest major={{ validation_major }}\n"
+        mode: "0644"

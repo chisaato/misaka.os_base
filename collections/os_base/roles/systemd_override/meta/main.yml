@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  author: chisaato
+  description: 已弃用的 journald 兼容入口，委托 misaka.os_base.logging
+  company: N/A
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Fedora
+      versions:
+        - all

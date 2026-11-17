@@ -1,0 +1,10 @@
+- name: 安装 btrfsmaintenance
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - btrfsmaintenance
+    state: present
+
+- name: 导入 btrfs 角色
+  ansible.builtin.include_role:
+    name: misaka.os_base.btrfs

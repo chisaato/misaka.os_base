@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  author: chisaato
+  description: ZSH 与 zi 配置管理
+  company: N/A
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Fedora
+      versions:
+        - all

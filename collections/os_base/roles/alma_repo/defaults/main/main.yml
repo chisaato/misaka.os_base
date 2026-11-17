@@ -1,0 +1,4 @@
+---
+# 镜像源设定
+# 角色主体任务尚未实现;Alma 仓库定义数据见同目录 repo-almalinux-*.yaml
+# (原从 fedora_repo 复制来的 use_mirrorlist/fedora_mirror/rpmfusion_* 等遗留变量已清理)

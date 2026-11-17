@@ -1,0 +1,71 @@
+---
+- name: 保存下载动作并先记录写前意图
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_download_decision: "{{ fedora_dist_upgrade_decision }}"
+    fedora_dist_upgrade_decision: "{{ fedora_dist_upgrade_decision | combine({'phase': 'prepared', 'side_effects': []}) }}"
+    fedora_dist_upgrade_record_intent_set: true
+    fedora_dist_upgrade_record_intent:
+      action: download
+      boot_id: "{{ fedora_dist_upgrade_observed.boot_id }}"
+
+- name: 下载开始之前原子记录 prepared 和 intent
+  ansible.builtin.include_tasks: ../record.yml
+
+- name: 使用已经落盘的 seq 继续下载
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_marker: "{{ (fedora_dist_upgrade_built.stdout | from_json).marker }}"
+    fedora_dist_upgrade_decision: "{{ fedora_dist_upgrade_download_decision }}"
+
+- name: 刷新控制机上的 previous marker
+  ansible.builtin.copy:
+    dest: "/tmp/opencode/fedora-dist-upgrade-{{ inventory_hostname }}-marker.json"
+    mode: "0600"
+    content: "{{ fedora_dist_upgrade_marker | to_json }}"
+  delegate_to: localhost
+
+- name: 下载目标版本的离线升级事务
+  become: true
+  ansible.builtin.command:
+    argv:
+      - dnf5
+      - system-upgrade
+      - download
+      - "--releasever={{ fedora_dist_upgrade_decision.effective_target }}"
+      - -y
+  register: fedora_dist_upgrade_download
+  changed_when: fedora_dist_upgrade_download.rc == 0
+  retries: "{{ fedora_dist_upgrade_download_retries | int }}"
+  delay: 10
+  until: fedora_dist_upgrade_download.rc == 0
+
+- name: 重新探测离线事务指纹
+  ansible.builtin.script: "{{ role_path }}/files/probe_fedora.py"
+  register: fedora_dist_upgrade_probe_after_download
+  changed_when: false
+  become: true
+
+- name: 切出下载后的第一段 JSON
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        decoder = json.JSONDecoder()
+        payload, _ = decoder.raw_decode(sys.stdin.read().lstrip())
+        json.dump(payload, sys.stdout)
+  args:
+    stdin: "{{ fedora_dist_upgrade_probe_after_download.stdout }}"
+  register: fedora_dist_upgrade_probe_after_download_json
+  changed_when: false
+  delegate_to: localhost
+
+- name: 把下载指纹放进 marker
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_record_intent: null
+    fedora_dist_upgrade_observed: "{{ fedora_dist_upgrade_probe_after_download_json.stdout | from_json }}"
+    fedora_dist_upgrade_record_evidence:
+      download:
+        releasever: "{{ (fedora_dist_upgrade_probe_after_download_json.stdout | from_json).pending.releasever | default('') }}"
+        pending_sha256: "{{ (fedora_dist_upgrade_probe_after_download_json.stdout | from_json).pending.sha256 | default('') }}"
+        adopted_by: ansible

@@ -1,0 +1,43 @@
+---
+# host_geo 收敛：默认按国内镜像处理，仅当显式设置为非 cn 时走国际源
+- name: 收敛 host_geo 为国内镜像开关
+  ansible.builtin.set_fact:
+    debian_init_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+
+- name: 跳过：debian_init 仅支持 Debian
+  ansible.builtin.debug:
+    msg: "跳过：debian_init 仅支持 Debian，当前系统为 {{ ansible_facts['distribution'] }}"
+  when: ansible_facts['distribution'] != 'Debian'
+
+- name: Debian 初始化主体
+  when: ansible_facts['distribution'] == 'Debian'
+  block:
+    - name: 安装必要的软件包
+      become: true
+      # 长下载任务,保留 retries + until 防网络抖动
+      retries: 5
+      until: debian_init_apt_install_packages is success
+      when: debian_init_install_extra_tools
+      ansible.builtin.apt:
+        pkg: "{{ debian_init_packages }}"
+        update_cache: true
+      register: debian_init_apt_install_packages
+
+    - name: 检查 Debian {{ ansible_facts['distribution_version'] }} 的软件包操作
+      ansible.builtin.stat:
+        path: "{{ role_path }}/tasks/extra/debian_{{ ansible_facts['distribution_version'] }}.yml"
+      # role_path 是控制机路径,stat 必须在控制机执行,否则远程机上恒不存在、任务被静默跳过
+      delegate_to: localhost
+      register: debian_init_extra_package_task_file
+
+    - name: 导入 Debian {{ ansible_facts['distribution_version'] }} 的软件包操作
+      ansible.builtin.include_tasks: tasks/extra/debian_{{ ansible_facts['distribution_version'] }}.yml
+      when: debian_init_extra_package_task_file.stat.exists
+
+    - name: 导入 unattended-upgrades 任务
+      when: debian_init_enable_unattend_apt
+      ansible.builtin.include_tasks: unattended_upgrades.yml
+
+    - name: 导入通用工作
+      ansible.builtin.include_role:
+        name: misaka.os_base.common_init

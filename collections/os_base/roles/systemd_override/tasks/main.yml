@@ -1,0 +1,9 @@
+---
+- name: 提示 systemd_override 已弃用
+  ansible.builtin.debug:
+    msg: systemd_override 已弃用，请改用 misaka.os_base.logging；此兼容入口仅配置 journald。
+
+- name: 兼容旧入口的 journald 配置
+  ansible.builtin.include_role:
+    name: misaka.os_base.logging
+    tasks_from: journald

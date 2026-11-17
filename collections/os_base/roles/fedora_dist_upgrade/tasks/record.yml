@@ -1,0 +1,116 @@
+---
+- name: 记下要归档的 operation
+  when: fedora_dist_upgrade_decision.archive | bool and fedora_dist_upgrade_decision.decision in ['abandon', 'stale']
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_archive_id: "{{ fedora_dist_upgrade_marker.operation_id }}"
+
+- name: 归档后不再保留活动 marker
+  when: fedora_dist_upgrade_decision.archive | bool and fedora_dist_upgrade_decision.decision == 'abandon'
+  ansible.builtin.include_tasks: archive.yml
+
+- name: 陈旧 marker 先归档再开新周期
+  when: fedora_dist_upgrade_decision.archive | bool and fedora_dist_upgrade_decision.decision == 'stale'
+  ansible.builtin.include_tasks: archive.yml
+
+- name: 放弃只归档，不写新 marker
+  when: fedora_dist_upgrade_decision.decision == 'abandon'
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_stop: true
+
+- name: 计算要写入的阶段
+  when: fedora_dist_upgrade_decision.decision != 'abandon'
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_record_stage: >-
+      {{
+        {
+          'claim': 'preflight',
+          'prepare': 'prepared',
+          'download': 'downloaded',
+          'reboot': 'reboot_requested',
+          'verify': 'verified',
+          'finalize': 'completed'
+        }.get(fedora_dist_upgrade_decision.side_effects[-1], fedora_dist_upgrade_decision.phase)
+        if fedora_dist_upgrade_decision.side_effects
+        else fedora_dist_upgrade_decision.phase
+      }}
+
+- name: 组装 marker 更新请求
+  when: fedora_dist_upgrade_decision.decision != 'abandon'
+  ansible.builtin.copy:
+    dest: "/tmp/opencode/fedora-dist-upgrade-{{ inventory_hostname }}-build.json"
+    mode: "0600"
+    content: >-
+      {{
+        {
+          'target': fedora_dist_upgrade_decision.effective_target,
+          'source': fedora_dist_upgrade_observed.os,
+          'family': 'fedora',
+          'tested_profile': fedora_dist_upgrade_tested_profile,
+          'note': fedora_dist_upgrade_decision.history_result,
+          'evidence': fedora_dist_upgrade_record_evidence | default({}, true),
+          'intent': fedora_dist_upgrade_record_intent
+        } if fedora_dist_upgrade_record_intent_set | bool
+        else {
+          'target': fedora_dist_upgrade_decision.effective_target,
+          'source': fedora_dist_upgrade_observed.os,
+          'family': 'fedora',
+          'tested_profile': fedora_dist_upgrade_tested_profile,
+          'note': fedora_dist_upgrade_decision.history_result,
+          'evidence': fedora_dist_upgrade_record_evidence | default({}, true)
+        }
+      }}
+  delegate_to: localhost
+  changed_when: false
+
+- name: 生成新的 marker 文档
+  when: fedora_dist_upgrade_decision.decision != 'abandon'
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          'python3', fedora_dist_upgrade_state_bin, 'build-marker',
+          '--observed', '/tmp/opencode/fedora-dist-upgrade-' ~ inventory_hostname ~ '-observed.json',
+          '--request', '/tmp/opencode/fedora-dist-upgrade-' ~ inventory_hostname ~ '-build.json',
+          '--stage', fedora_dist_upgrade_record_stage,
+          '--result', fedora_dist_upgrade_decision.history_result | default('ok', true),
+          '--now', lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')
+        ]
+        + (
+          ['--previous', '/tmp/opencode/fedora-dist-upgrade-' ~ inventory_hostname ~ '-marker.json']
+          if fedora_dist_upgrade_marker else []
+        )
+      }}
+  delegate_to: localhost
+  register: fedora_dist_upgrade_built
+  changed_when: false
+
+- name: 把 marker 载荷放到目标机
+  when: fedora_dist_upgrade_decision.decision != 'abandon'
+  become: true
+  ansible.builtin.copy:
+    dest: /run/misaka-dist-upgrade-marker.json
+    mode: "0600"
+    content: "{{ (fedora_dist_upgrade_built.stdout | from_json).marker | to_nice_json }}"
+
+- name: 校验 seq 后原子写入 marker
+  when: fedora_dist_upgrade_decision.decision != 'abandon'
+  become: true
+  ansible.builtin.script: >-
+    {{ fedora_dist_upgrade_state_bin }} marker-write
+    --path {{ fedora_dist_upgrade_state_dir }}/fedora.json
+    --payload /run/misaka-dist-upgrade-marker.json
+    --expect-seq {{ (fedora_dist_upgrade_built.stdout | from_json).expect_seq }}
+  register: fedora_dist_upgrade_marker_write
+  changed_when: fedora_dist_upgrade_marker_write.rc == 0
+
+- name: 完成后复制一份到 history
+  when:
+    - fedora_dist_upgrade_decision.decision != 'abandon'
+    - fedora_dist_upgrade_record_stage == 'completed'
+  block:
+    - name: 使用刚写入的 operation_id
+      ansible.builtin.set_fact:
+        fedora_dist_upgrade_archive_id: "{{ (fedora_dist_upgrade_built.stdout | from_json).marker.operation_id }}"
+
+    - name: 归档完成的 marker
+      ansible.builtin.include_tasks: archive.yml

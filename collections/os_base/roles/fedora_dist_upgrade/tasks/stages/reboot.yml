@@ -1,0 +1,25 @@
+---
+- name: 在发出重启前写下 intent
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_record_intent_set: true
+    fedora_dist_upgrade_record_intent:
+      action: reboot
+      boot_id: "{{ fedora_dist_upgrade_observed.boot_id }}"
+    fedora_dist_upgrade_record_evidence:
+      reboot:
+        requested_boot_id: "{{ fedora_dist_upgrade_observed.boot_id }}"
+    fedora_dist_upgrade_decision: >-
+      {{ fedora_dist_upgrade_decision | combine({'side_effects': ['reboot'], 'mutate': true, 'history_result': 'reboot_requested'}) }}
+
+- name: 先落盘 intent，再调用离线重启
+  ansible.builtin.include_tasks: ../record.yml
+
+- name: 避免本步结束时再写一次 marker
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_decision: "{{ fedora_dist_upgrade_decision | combine({'mutate': false}) }}"
+
+- name: 执行 dnf5 offline reboot
+  become: true
+  ansible.builtin.reboot:
+    reboot_command: dnf5 offline reboot -y
+    reboot_timeout: "{{ fedora_dist_upgrade_reboot_timeout }}"

@@ -1,0 +1,6 @@
+---
+# 只刷新单元定义，不启动或重启运行中的 Docker。
+- name: 重载 Docker systemd 单元
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true

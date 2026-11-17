@@ -1,0 +1,28 @@
+---
+- name: 安装自动升级软件包
+  become: true
+  # 长下载任务,保留 retries + until 防网络抖动
+  retries: 5
+  until: debian_init_unattended_install is success
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+    update_cache: true
+  register: debian_init_unattended_install
+
+- name: 设定自动升级内容
+  become: true
+  # notify 必须放在实际改配置的任务上,写在 block 上不会生效
+  notify: "restart unattended-upgrades"
+  ansible.builtin.template:
+    mode: "0644"
+    src: unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+
+- name: 确保自动升级启用
+  become: true
+  notify: "restart unattended-upgrades"
+  ansible.builtin.template:
+    mode: "0644"
+    src: auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades

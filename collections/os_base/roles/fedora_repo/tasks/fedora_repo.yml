@@ -1,0 +1,53 @@
+# 更换源
+- name: 渲染 Fedora 镜像源文件
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/yum.repos.d/{{ item.path | regex_replace('.j2$', '') }}"
+    mode: "{{ item.mode }}"
+  with_community.general.filetree: "{{ 'templates/repos/fedora/' }}"
+  when: item.state == 'file'
+
+- name: 创建 mirrorlist 目录
+  become: true
+  ansible.builtin.file:
+    mode: "0755"
+    path: "/etc/dnf/mirrorlist/"
+    state: directory
+    owner: "root"
+    group: "root"
+
+- name: 渲染 Fedora mirrorlist 文件
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/dnf/mirrorlist/{{ item.path | regex_replace('.j2$', '') }}"
+    mode: "0644"
+  with_community.general.filetree: "{{ 'templates/mirrorlist/fedora/' }}"
+  when: item.state == 'file'
+
+- name: 卸载 fedora-repos-modular 包
+  become: true
+  ansible.builtin.dnf:
+    name: fedora-repos-modular
+    state: absent
+    # cacheonly: true
+  # 只有 Fedora 版本低于 39
+  when: (ansible_facts['distribution_major_version'] | int) < 39
+
+# 获取要删除的 Modular 仓库文件,使用 find
+- name: 寻找要删除的 Modular 仓库文件
+  ansible.builtin.find:
+    paths: /etc/yum.repos.d/
+    patterns:
+      - "fedora-modular*"
+      - "fedora-updates-modular*"
+      - "fedora-updates-testing-modular*"
+  register: fedora_repo_modular_repos_to_delete
+
+- name: 删除 Modular 仓库文件
+  become: true
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  with_items: "{{ fedora_repo_modular_repos_to_delete.files }}"

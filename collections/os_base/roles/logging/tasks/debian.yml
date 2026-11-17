@@ -1,0 +1,12 @@
+---
+- name: 安装 Debian logrotate
+  become: true
+  ansible.builtin.apt:
+    name: logrotate
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: logging_package_result
+  retries: 3
+  delay: 5
+  until: logging_package_result is succeeded

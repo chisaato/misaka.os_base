@@ -1,0 +1,19 @@
+alma_repo_plus_repos:
+  - repo_id: plus
+    repo_name: AlmaLinux $releasever - Plus
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/plus/$basearch/os/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/plus
+  - repo_id: plus-debuginfo
+    repo_name: AlmaLinux $releasever - Plus - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/plus/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/plus-debug
+  - repo_id: plus-source
+    repo_name: AlmaLinux $releasever - Plus - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/plus/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/plus-source

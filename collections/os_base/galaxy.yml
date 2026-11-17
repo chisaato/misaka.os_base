@@ -1,0 +1,24 @@
+namespace: misaka
+name: os_base
+version: 1.13.0
+readme: README.md
+authors:
+  - chisaato <catsreporter@proton.me>
+description: 去设置常见的操作系统
+license:
+  - GPL-2.0-or-later
+license_file: ""
+tags:
+  - linux
+  - infrastructure
+dependencies: {}
+repository: ""
+issues: ""
+build_ignore:
+  - .vscode
+  - .codegraph
+  - .omo
+  - opencode.json
+  - local_install.sh
+  - shared
+  - collections

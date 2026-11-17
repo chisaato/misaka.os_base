@@ -1,0 +1,22 @@
+fedora_repo_rpmfusion_free_updates_repos:
+  - repo_id: rpmfusion-free-updates
+    repo_name: RPM Fusion for Fedora $releasever - Free - Updates
+    repo_baseurl: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/free/fedora/updates/$releasever/$basearch/
+    repo_metalink: https://mirrors.rpmfusion.org/metalink?repo=free-fedora-updates-released-$releasever&arch=$basearch
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-free-fedora-$releasever
+    mirrorlist: file:///etc/dnf/mirrorlist/rpmfusion-free-updates.mirrorlist
+  - repo_id: rpmfusion-free-updates-debuginfo
+    repo_name: RPM Fusion for Fedora $releasever - Free - Updates Debug
+    repo_baseurl: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/free/fedora/updates/$releasever/$basearch/debug/
+    repo_metalink: https://mirrors.rpmfusion.org/metalink?repo=free-fedora-updates-released-debug-$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-free-fedora-$releasever
+    mirrorlist: file:///etc/dnf/mirrorlist/rpmfusion-free-updates-debuginfo.mirrorlist
+  - repo_id: rpmfusion-free-updates-source
+    repo_name: RPM Fusion for Fedora $releasever - Free - Updates Source
+    repo_baseurl: https://{{ fedora_repo_rpmfusion_mirror }}/rpmfusion/free/fedora/updates/$releasever/SRPMS/
+    repo_metalink: https://mirrors.rpmfusion.org/metalink?repo=free-fedora-updates-released-source-$releasever&arch=$basearch
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-free-fedora-$releasever
+    mirrorlist: file:///etc/dnf/mirrorlist/rpmfusion-free-updates-source.mirrorlist

@@ -1,0 +1,104 @@
+---
+- name: Fedora 43 到 44 的分阶段升级
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    fedora_dist_upgrade_target_release: 44
+    fedora_dist_upgrade_tested_profile:
+      image: Fedora-Cloud-Base-Generic-43
+      memory_mib: 3072
+      disk_gib: 20
+      repos: fedora-metalink
+      third_party: false
+      load: none
+      profile: empty-uefi-cloud
+  tasks:
+    - name: 安装测试用 EFI 变量读取工具
+      ansible.builtin.dnf:
+        name: efibootmgr
+        state: present
+      register: fedora_dist_upgrade_efi_tool
+      retries: 3
+      delay: 5
+      until: fedora_dist_upgrade_efi_tool is succeeded
+
+    - name: 升级前必须是真实 UEFI
+      ansible.builtin.command:
+        argv: ["efibootmgr", "-v"]
+      register: fedora_dist_upgrade_efi_before
+      changed_when: false
+    # 2026-10-23 国内镜像的 updates/44 对 less、ca-certificates 返回 404。
+    # 本场景用云镜像自带的 metalink，不在这里套 fedora_repo。
+    - name: 目录锁还没建立时先做并发互斥探针
+      ansible.builtin.stat:
+        path: /var/lib/misaka/dist-upgrade/fedora.json
+      register: fedora_dist_upgrade_marker_before
+
+    - name: 在客户机上证明同一时刻只有一个目录锁
+      when: not fedora_dist_upgrade_marker_before.stat.exists
+      ansible.builtin.include_tasks: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/roles/fedora_dist_upgrade/tasks/lock_probe.yml"
+
+    - name: 先把当前版本准备好，停在下载之前
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_dist_upgrade
+      vars:
+        fedora_dist_upgrade_action: advance
+        fedora_dist_upgrade_until: prepared
+
+    - name: 模拟人工下载目标版本
+      when: ansible_facts['distribution_major_version'] | int == 43
+      become: true
+      ansible.builtin.command:
+        argv:
+          - dnf5
+          - system-upgrade
+          - download
+          - --releasever=44
+          - -y
+      register: fedora_dist_upgrade_manual_download
+      changed_when: fedora_dist_upgrade_manual_download.rc == 0
+      retries: 5
+      delay: 10
+      until: fedora_dist_upgrade_manual_download.rc == 0
+
+    - name: 重新采集，避免用准备阶段之前的版本事实
+      ansible.builtin.setup:
+
+    - name: 收养人工下载并停在 downloaded
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_dist_upgrade
+      vars:
+        fedora_dist_upgrade_action: advance
+        fedora_dist_upgrade_until: downloaded
+
+    - name: 同一阶段再跑一次，不得重新下载
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_dist_upgrade
+      vars:
+        fedora_dist_upgrade_action: advance
+        fedora_dist_upgrade_until: downloaded
+
+    - name: 读取阶段边界的独立事实
+      when: ansible_facts['distribution_major_version'] | int == 43
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, pathlib, tomllib
+            marker = json.loads(pathlib.Path('/var/lib/misaka/dist-upgrade/fedora.json').read_text())
+            state = tomllib.loads(pathlib.Path('/usr/lib/sysimage/libdnf5/offline/offline-transaction-state.toml').read_text())
+            assert marker['stage'] == 'downloaded'
+            assert state['offline-transaction-state']['target_releasever'] == '44'
+            assert marker['evidence']['download']['adopted_by'] == 'manual'
+            assert pathlib.Path('/sys/firmware/efi').is_dir()
+            print(json.dumps({'stage':marker['stage'],'operation_id':marker['operation_id'],'seq':marker['seq']}))
+      changed_when: false
+
+    - name: 继续到 completed
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_dist_upgrade
+      vars:
+        fedora_dist_upgrade_action: advance
+        fedora_dist_upgrade_until: completed

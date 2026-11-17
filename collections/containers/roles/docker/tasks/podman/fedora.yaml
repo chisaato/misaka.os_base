@@ -1,0 +1,62 @@
+# Fedora 打包的 podman-compose 不满足需求,仍需 Docker CE 的 compose 插件源。
+# Fedora 使用 DNF5 override,Debian apt 的 docker-ce.list 仍维持烘焙式配置。
+- name: 配置 Fedora Docker CE 软件源
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/fedora_repo.yaml"
+
+# 清理不兼容的软件包,
+# docker-ce
+- name: 清理对于 Podman 不兼容的东西
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - moby-engine
+      # 这个清理掉,不然偶尔会报错
+      - docker-ce-rootless-extras
+    state: absent
+
+- name: 安装 Podman
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - podman
+      # 什么时候 Fedora 内置这个包啊
+      # 偏偏 docker-compose 还要从别人那下
+      - docker-compose-plugin
+    state: present
+
+# 凡事要先卸载再安装
+- name: 卸载 docker-ce-cli (使用 Podman 模拟 Docker 命令)
+  become: true
+  when: docker_enable_podman_docker | bool
+  ansible.builtin.dnf:
+    name:
+      - docker-ce-cli
+    allowerasing: true
+    state: absent
+
+- name: 安装 podman-docker (使用 Podman 模拟 Docker 命令)
+  become: true
+  when: docker_enable_podman_docker | bool
+  ansible.builtin.dnf:
+    name:
+      - podman-docker
+    allowerasing: true
+    state: present
+
+# 同理,默认关闭模拟时移除 podman-docker 并安装原生 Docker CLI
+- name: 卸载 podman-docker (使用原生 Docker 命令)
+  become: true
+  when: not (docker_enable_podman_docker | bool)
+  ansible.builtin.dnf:
+    name:
+      - podman-docker
+    state: absent
+
+- name: 安装 docker-ce-cli (使用原生 Docker 命令)
+  become: true
+  when: not (docker_enable_podman_docker | bool)
+  ansible.builtin.dnf:
+    name:
+      - docker-ce-cli
+    state: present

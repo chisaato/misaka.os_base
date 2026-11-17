@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: chisaato <catsreporter@proton.me>
+  description: PVE 节点初始化 (订阅源清理、hosts、IPv4 转发等)
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+
+  galaxy_tags:
+    - linux
+    - infrastructure
+
+dependencies: []

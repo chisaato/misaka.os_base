@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  author: chisaato
+  description: 通用系统初始化（防火墙清理 / sysctl / systemd 调优）
+  company: N/A
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Fedora
+      versions:
+        - all

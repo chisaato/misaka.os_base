@@ -1,0 +1,6 @@
+{% for fedora_repo_mirror_list_item in fedora_repo_mirror_list %}
+{% if fedora_repo_add_development_to_repo %}
+https://{{ fedora_repo_mirror_list_item }}/fedora/development/$releasever/Everything/source/tree/
+{% endif %}
+https://{{ fedora_repo_mirror_list_item }}/fedora/releases/$releasever/Everything/source/tree/
+{% endfor %}

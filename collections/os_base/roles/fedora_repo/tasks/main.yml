@@ -1,0 +1,102 @@
+---
+- name: 跳过:Fedora 专用角色
+  ansible.builtin.debug:
+    msg: "跳过:Fedora 专用角色"
+  when: ansible_facts['distribution'] != 'Fedora'
+
+# block 级 when 会传导给内部任务
+- name: Fedora 源配置主体
+  when: ansible_facts['distribution'] == 'Fedora'
+  block:
+    # 国内镜像开关收敛到派生变量,任务与模板统一消费该变量
+    - name: 判定是否使用国内镜像
+      ansible.builtin.set_fact:
+        fedora_repo_use_cn_mirror: "{{ (host_geo.country | default('cn')) == 'cn' }}"
+
+    - name: 探测 Fedora vendor repo 是否已迁入 dnf5 目录
+      ansible.builtin.stat:
+        path: /usr/share/dnf5/repos.d/fedora.repo
+      register: fedora_repo_vendor_probe
+
+    - name: 记录 vendor repo 布局
+      ansible.builtin.set_fact:
+        fedora_repo_vendor_relocated: "{{ fedora_repo_vendor_probe.stat.exists }}"
+
+    # Fedora 42 也要开启,否则无法升级到 Fedora 43
+    # 按目标版本判断(而非运行中系统的 facts),dist-upgrade 跨版本渲染时语义才正确
+    - name: 为 Fedora >= 42 开启 dev 路径适配
+      ansible.builtin.set_fact:
+        fedora_repo_add_development_to_repo: "{{ fedora_repo_target_major_version | int >= 42 }}"
+
+    # 加速 dnf
+    - name: 开启 dnf 最快镜像
+      become: true
+      community.general.ini_file:
+        path: /etc/dnf/dnf.conf
+        section: main
+        option: fastestmirror
+        value: "true"
+        mode: "0644"
+
+    - name: 设定 dnf 并发下载
+      become: true
+      community.general.ini_file:
+        path: /etc/dnf/dnf.conf
+        section: main
+        option: max_parallel_downloads
+        value: "20"
+        mode: "0644"
+
+    - name: 关闭 zchunk
+      become: true
+      community.general.ini_file:
+        path: /etc/dnf/dnf.conf
+        section: main
+        option: zchunk
+        value: "false"
+        mode: "0644"
+
+    # 对于 Fedora >= 41 (dnf5),Ansible dnf 模块依赖 python3-libdnf5,最小安装可能没有
+    # Fedora < 41 是 dnf4,不需要
+    - name: 检测 python3-libdnf5 是否已安装
+      ansible.builtin.command: rpm -q python3-libdnf5 # noqa: command-instead-of-module 只读探测 rpmdb,无等价模块
+      register: fedora_repo_libdnf5_check
+      changed_when: false
+      failed_when: false
+      when: ansible_facts['distribution_version'] | int >= 41
+
+    - name: 引导安装 python3-libdnf5 (dnf5 后端必需)
+      ansible.builtin.command: dnf install -y python3-libdnf5
+      register: fedora_repo_libdnf5_install
+      changed_when: true
+      retries: 3
+      delay: 5
+      until: fedora_repo_libdnf5_install.rc == 0
+      when: ansible_facts['distribution_version'] | int >= 41 and fedora_repo_libdnf5_check.rc is defined and fedora_repo_libdnf5_check.rc != 0
+
+    - name: 导入 Fedora 镜像源任务
+      ansible.builtin.include_tasks: fedora_repo.yml
+      when: fedora_repo_use_cn_mirror and not fedora_repo_vendor_relocated
+
+    - name: 校验迁移后 vendor 包与配置完整性
+      ansible.builtin.include_tasks: vendor_guard.yml
+      when: fedora_repo_vendor_relocated
+
+    - name: 导入 RPMFusion 源任务
+      ansible.builtin.include_tasks: rpmfusion.yml
+      when: fedora_repo_rpmfusion_enable
+
+    - name: 写入迁移后国内镜像配置
+      ansible.builtin.include_tasks: vendor_override.yml
+      when: fedora_repo_vendor_relocated and fedora_repo_use_cn_mirror
+
+    - name: 删除迁移后不再使用的国内 override
+      become: true
+      ansible.builtin.file:
+        path: /etc/dnf/repos.override.d/40-misaka-cn-mirror.repo
+        state: absent
+      when: fedora_repo_vendor_relocated and not fedora_repo_use_cn_mirror
+
+    - name: 清理遮蔽 vendor 定义的旧文件
+      ansible.builtin.include_tasks: vendor_migrate.yml
+      when: fedora_repo_vendor_relocated

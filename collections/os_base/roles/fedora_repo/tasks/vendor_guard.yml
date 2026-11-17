@@ -1,0 +1,71 @@
+---
+- name: 获取 vendor 软件包状态
+  become: true
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: 核验已安装的 vendor release 包
+  become: true
+  ansible.builtin.command:
+    argv: ["rpm", "-V", "{{ item }}"]
+  loop:
+    - fedora-repos
+    - rpmfusion-free-release
+    - rpmfusion-nonfree-release
+  when: item in ansible_facts.packages
+  register: fedora_repo_vendor_verify
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# rpm -V 还可能报告与本角色无关的文件；仅针对迁移后的 repo 和 key 判定。
+- name: 汇总 vendor repo 与密钥的校验漂移
+  ansible.builtin.set_fact:
+    fedora_repo_vendor_drifted: >-
+      {{ fedora_repo_vendor_verify.results
+         | rejectattr('skipped', 'defined')
+         | selectattr('stdout', 'search', '/usr/share/(dnf5/repos[.]d/|pki/rpm-gpg/)')
+         | map(attribute='item') | list }}
+
+- name: 默认拒绝修改过的 vendor 配置
+  ansible.builtin.fail:
+    msg: >-
+      vendor 包 {{ fedora_repo_vendor_drifted | join(', ') }} 的 /usr/share/dnf5/repos.d
+      repo 或 /usr/share/pki/rpm-gpg key 已漂移。直接修改包文件是升级后 .rpmsave
+      事故的根因；请先检查 rpm -V 并 dnf reinstall 相应包，或显式设置
+      fedora_repo_vendor_reinstall_drifted=true 允许角色修复。
+  when: fedora_repo_vendor_drifted | length > 0 and not fedora_repo_vendor_reinstall_drifted
+
+- name: 显式允许时重装漂移的 vendor 包
+  become: true
+  ansible.builtin.command:
+    argv: ["dnf", "reinstall", "-y", "{{ item }}"]
+  loop: "{{ fedora_repo_vendor_drifted }}"
+  register: fedora_repo_vendor_reinstall
+  changed_when: true
+  retries: 3
+  delay: 10
+  until: fedora_repo_vendor_reinstall.rc == 0
+  when: fedora_repo_vendor_reinstall_drifted and not ansible_check_mode
+
+- name: 重装后复验 vendor 包
+  become: true
+  ansible.builtin.command:
+    argv: ["rpm", "-V", "{{ item }}"]
+  loop: "{{ fedora_repo_vendor_drifted }}"
+  register: fedora_repo_vendor_recheck
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: fedora_repo_vendor_reinstall_drifted and not ansible_check_mode
+
+- name: 确认重装已修复 vendor repo 与密钥
+  ansible.builtin.assert:
+    that:
+      - >-
+        fedora_repo_vendor_recheck.results
+        | rejectattr('skipped', 'defined')
+        | selectattr('stdout', 'search', '/usr/share/(dnf5/repos[.]d/|pki/rpm-gpg/)')
+        | list | length == 0
+    fail_msg: "重装后 vendor repo 或 GPG key 仍漂移，请人工检查 rpm -V。"
+  when: fedora_repo_vendor_reinstall_drifted and not ansible_check_mode

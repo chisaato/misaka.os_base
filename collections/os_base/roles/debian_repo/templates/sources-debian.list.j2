@@ -1,0 +1,49 @@
+# 主源
+deb https://{{debian_repo_apt_mirror}}/debian/ {{ debian_repo_target_codename }} main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 更新源
+deb https://{{debian_repo_apt_mirror}}/debian/ {{ debian_repo_target_codename }}-updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 反向移植源
+deb https://{{debian_repo_apt_mirror}}/debian/ {{ debian_repo_target_codename }}-backports main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 安全更新源
+{% if debian_repo_target_major_version is version('11', '>=') %}
+{# Debian 11 开始此处需要修改 #}
+deb https://{{debian_repo_apt_security_mirror}}/debian-security {{ debian_repo_target_codename }}-security main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% else %}
+deb https://{{debian_repo_apt_security_mirror}}/debian-security {{ debian_repo_target_codename }}/updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endif %}
+
+{% if debian_repo_enable_testing == true %}
+# 测试源
+deb https://{{debian_repo_apt_mirror}}/debian testing main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 测试更新源
+deb https://{{debian_repo_apt_security_mirror}}/debian-security testing-security main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endif %}
+
+{% if debian_repo_enable_unstable == true %}
+# UnStable 源
+deb https://{{debian_repo_apt_mirror}}/debian unstable main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endif %}
+
+{% if debian_repo_set_apt_src_repo == true %}
+# 主源 src
+deb-src https://{{debian_repo_apt_mirror}}/debian/ {{ debian_repo_target_codename }} main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 更新源 src
+deb-src https://{{debian_repo_apt_mirror}}/debian/ {{ debian_repo_target_codename }}-updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 反向移植源 src
+deb-src https://{{debian_repo_apt_mirror}}/debian/ {{ debian_repo_target_codename }}-backports main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 安全更新源 src
+deb-src https://{{debian_repo_apt_security_mirror}}/debian-security {{ debian_repo_target_codename }}/updates main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+
+{% if debian_repo_enable_testing == true %}
+# 测试源 src
+deb-src https://{{debian_repo_apt_mirror}}/debian testing main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+# 测试更新源 src
+deb-src http://{{debian_repo_apt_security_mirror}}/debian-security testing-security main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endif %}
+
+{% if debian_repo_enable_unstable == true %}
+# UnStable 源 src
+deb-src http://{{debian_repo_apt_mirror}}/debian unstable main contrib non-free {% if debian_repo_target_major_version is version('12', '>=') %}non-free-firmware{% endif +%}
+{% endif %}
+
+{% endif %}

@@ -1,0 +1,3 @@
+---
+- name: 独立验证恢复后的客户机
+  ansible.builtin.import_playbook: ../fedora_dist_upgrade/verify.yml

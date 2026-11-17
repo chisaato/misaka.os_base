@@ -1,0 +1,7 @@
+pve_init_remove_enterprise: true
+# pve_init_apt_mirror: mirrors.tuna.tsinghua.edu.cn
+pve_init_apt_mirror: mirrors.ustc.edu.cn
+# 写入主机名和解析映射,如果机器不是长久持有那就不要写这一项.
+pve_init_hosts: false
+# 自动为你进行 Debian 设定,可选的
+pve_init_auto_debian_init: true

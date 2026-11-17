@@ -1,0 +1,39 @@
+# 自建 systemd 基础镜像（Debian）
+# podman build 时 item.image 由 molecule platforms 传入
+FROM {{ item.image }}
+
+ENV container=docker
+ENV DEBIAN_FRONTEND=noninteractive
+
+# systemd 容器运行所需的最小依赖集：
+#   systemd/systemd-sysv  - PID 1 与 SysV 兼容层（docker-ce 的 postinst 依赖）
+#   dbus                  - systemd 总线通信
+#   python3               - ansible 受管端
+#   python3-apt           - ansible apt 模块依赖,官方基础镜像不带
+#   sudo                  - ansible_become
+#   ca-certificates       - 姊妹角色配置的均为 https 镜像源,官方基础镜像不带
+#   iproute2/procps       - docker/网络诊断基础工具
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        systemd \
+        systemd-sysv \
+        dbus \
+        python3 \
+        python3-apt \
+        sudo \
+        ca-certificates \
+        iproute2 \
+        procps \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+# Debian 12 官方镜像的 apt 源已迁移为 DEB822 格式(sources.list.d/debian.sources),
+# 而姊妹角色 debian_repo 对 <=12 只覆写 /etc/apt/sources.list;
+# 预先清掉官方 DEB822 源,避免残留的 deb.debian.org 在受限网络下拖垮 apt update
+    && rm -f /etc/apt/sources.list.d/debian.sources \
+# 容器内没有终端,getty 会反复拉起失败,直接 mask
+    && ln -sf /dev/null /etc/systemd/system/getty.target
+
+# 保留 Debian 官方镜像自带的 /usr/sbin/policy-rc.d:
+# apt 安装 docker-ce 时不会自动拉起服务,由角色以 enable-only 方式收尾,
+# verify 阶段再显式启动做冒烟(符合角色"绝不重启生产服务"的约束)
+CMD ["/lib/systemd/systemd"]

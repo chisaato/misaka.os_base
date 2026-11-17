@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: chisaato
+  description: 发行版中立的升级 marker、阶段判定与目录锁
+  company: N/A
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Fedora
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all

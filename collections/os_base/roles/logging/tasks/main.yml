@@ -1,0 +1,24 @@
+---
+- name: 配置所有发行版的 journald
+  ansible.builtin.include_tasks: journald.yml
+
+- name: 配置 Fedora 日志治理
+  when: ansible_facts['distribution'] == 'Fedora'
+  block:
+    - name: 加载 Fedora 日志任务
+      ansible.builtin.include_tasks: fedora.yml
+
+- name: 提示尚未支持的日志治理平台
+  ansible.builtin.debug:
+    msg: "{{ ansible_facts['distribution'] }} 仅管理 journald，跳过 logrotate。"
+  when: ansible_facts['distribution'] not in ['Fedora', 'Debian']
+
+- name: 配置 Debian 日志治理
+  when: ansible_facts['distribution'] == 'Debian'
+  block:
+    - name: 加载 Debian 日志任务
+      ansible.builtin.include_tasks: debian.yml
+
+- name: 配置共享轮转规则及定时器
+  ansible.builtin.include_tasks: logrotate.yml
+  when: ansible_facts['distribution'] in ['Fedora', 'Debian']

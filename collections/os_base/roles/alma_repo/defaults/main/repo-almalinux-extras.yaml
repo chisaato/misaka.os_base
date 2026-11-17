@@ -1,0 +1,19 @@
+alma_repo_extras_repos:
+  - repo_id: extras
+    repo_name: AlmaLinux $releasever - Extras
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/extras/$basearch/os/
+    repo_enabled: 1
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/extras
+  - repo_id: extras-debuginfo
+    repo_name: AlmaLinux $releasever - Extras - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/extras/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/extras-debug
+  - repo_id: extras-source
+    repo_name: AlmaLinux $releasever - Extras - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/extras/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/extras-source

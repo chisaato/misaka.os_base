@@ -1,0 +1,34 @@
+---
+# Debian 主版本号 → PVE 安装源配置映射
+# pve_version: 对应的 PVE 大版本
+# key_name: 仓库签名密钥文件名
+# key_dest: 密钥落盘路径 (Debian <= 12 放 trusted.gpg.d;13+ 放 keyrings,配合 DEB822 的 Signed-By)
+# source_format: 安装源格式,list (Legacy) 或 sources (DEB822)
+# mirror_key: 国内镜像站是否同步了该密钥
+pve_on_debian_release_map:
+  "10":
+    pve_version: "6"
+    key_name: proxmox-release-buster.gpg
+    key_dest: /etc/apt/trusted.gpg.d/proxmox-release-buster.gpg
+    source_format: list
+    mirror_key: true
+  "11":
+    pve_version: "7"
+    key_name: proxmox-release-bullseye.gpg
+    key_dest: /etc/apt/trusted.gpg.d/proxmox-release-bullseye.gpg
+    source_format: list
+    mirror_key: true
+  "12":
+    pve_version: "8"
+    key_name: proxmox-release-bookworm.gpg
+    key_checksum: sha512:7da6fe34168adc6e479327ba517796d4702fa2f8b4f0a9833f5ea6e6b48f6507a6da403a274fe201595edc86a84463d50383d07f64bdde2e3658108db7d6dc87
+    key_dest: /etc/apt/trusted.gpg.d/proxmox-release-bookworm.gpg
+    source_format: list
+    mirror_key: true
+  "13":
+    pve_version: "9"
+    # 悲报,USTC 和 TUNA 都没有同步 trixie 的归档密钥,国内也从官方地址拉取
+    key_name: proxmox-archive-keyring-trixie.gpg
+    key_dest: /usr/share/keyrings/proxmox-archive-keyring.gpg
+    source_format: sources
+    mirror_key: false

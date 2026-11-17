@@ -1,0 +1,48 @@
+# 镜像源设定
+# 是否使用 mirrorlist
+# 考虑到国内使用 metalink 不一定好事,所以加入传统的 mirrorlist 支持
+fedora_repo_use_mirrorlist: true
+fedora_repo_use_metalink: false
+# fedora_repo_fedora_mirror: "mirrors.163.com"
+fedora_repo_fedora_mirror: "mirrors.tencent.com"
+fedora_repo_rpmfusion_mirror: "mirrors.tencent.com"
+# fedora_repo_rpmfusion_mirror: "mirrors.aliyun.com"
+# 是否开启 RPMFusion 仓库
+fedora_repo_rpmfusion_enable: true
+# 开启 RPMFusion 的被污染仓库
+fedora_repo_rpmfusion_enable_tained: false
+# 同步了 Fedora 仓库的镜像站
+fedora_repo_mirror_list:
+  # 企业镜像站扛把子
+  - mirrors.163.com
+  - mirrors.aliyun.com
+  - mirrors.tencent.com
+  - mirrors.cloud.tencent.com
+  # 华为,可能会限速
+  - mirrors.huaweicloud.com
+  # 高校镜像站
+  - mirrors.ustc.edu.cn
+  - mirrors.tuna.tsinghua.edu.cn
+  - mirrors.sustech.edu.cn
+  - mirrors.bfsu.edu.cn
+  - mirror.nyist.edu.cn
+  - mirrors.nju.edu.cn
+  - mirror.lzu.edu.cn
+  # 高校联合 302 跳转
+  - mirrors.cernet.edu.cn
+# 同步了 RPMFusion 仓库的镜像站
+fedora_repo_rpmfusion_mirror_list:
+  - mirrors.163.com
+  - mirrors.aliyun.com
+  - mirrors.tencent.com
+  - mirrors.cloud.tencent.com
+  - mirrors.ustc.edu.cn
+  - mirrors.tuna.tsinghua.edu.cn
+  - mirrors.bfsu.edu.cn
+# 为 Fedora >= 43 开启 dev 路径适配
+fedora_repo_add_development_to_repo: false
+# 渲染目标的 Fedora 大版本号(与 debian_repo 的 target 契约对称:
+# dist-upgrade 角色经 include_role + vars 覆写实现跨版本渲染,默认渲染当前系统版本)
+fedora_repo_target_major_version: "{{ ansible_facts['distribution_major_version'] }}"
+# 仅显式同意时修复被直接修改过的 vendor repo / GPG key。
+fedora_repo_vendor_reinstall_drifted: false

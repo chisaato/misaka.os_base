@@ -1,0 +1,163 @@
+---
+# 对已有运行目录做断电后续跑：virsh destroy 后用同一 overlay、seed、nvram 和 UUID 再 create。
+# 不删除磁盘，不使用 undefine --nvram。
+- name: Relaunch an existing libvirt instance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    libvirt_support_dir: "{{ playbook_dir }}"
+  tasks:
+    - name: 载入默认值
+      ansible.builtin.include_vars:
+        file: "{{ libvirt_support_dir }}/defaults.yml"
+
+    - name: 读取所有权清单
+      ansible.builtin.set_fact:
+        libvirt_manifest: "{{ lookup('file', libvirt_relaunch_manifest) | from_yaml }}"
+
+    - name: 清单路径必须落在运行目录内
+      ansible.builtin.assert:
+        that:
+          - libvirt_manifest.schema | int == 1
+          - libvirt_manifest.owner == 'misaka-molecule-libvirt'
+          - libvirt_manifest.domain is match('^mol-[A-Za-z0-9._-]+$')
+          - libvirt_manifest.uri == libvirt_uri
+          - libvirt_manifest.nvram is match('^' ~ libvirt_cache_root ~ '/runs/')
+          - libvirt_manifest.overlay is match('^' ~ libvirt_cache_root ~ '/runs/')
+          - libvirt_manifest.serial_log is match('^' ~ libvirt_cache_root ~ '/runs/')
+        fail_msg: "relaunch 拒绝使用运行目录以外的清单路径"
+
+    - name: 用清单恢复域参数
+      ansible.builtin.set_fact:
+        libvirt_uri: "{{ libvirt_manifest.uri }}"
+        libvirt_network: "{{ libvirt_manifest.network }}"
+        libvirt_run_id: "{{ libvirt_manifest.run_id }}"
+        libvirt_platform_name: "{{ libvirt_manifest.platform }}"
+        libvirt_domain_name: "{{ libvirt_manifest.domain }}"
+        libvirt_domain_uuid: "{{ libvirt_manifest.uuid }}"
+        libvirt_mac: "{{ libvirt_manifest.mac }}"
+        libvirt_overlay_path: "{{ libvirt_manifest.overlay }}"
+        libvirt_seed_path: "{{ libvirt_manifest.seed }}"
+        libvirt_nvram_path: "{{ libvirt_manifest.nvram }}"
+        libvirt_serial_log: "{{ libvirt_manifest.serial_log }}"
+        libvirt_uefi_loader: "{{ libvirt_manifest.loader }}"
+        libvirt_instance_dir: "{{ libvirt_manifest.overlay | dirname }}"
+
+    - name: 重新发现固件格式
+      ansible.builtin.include_tasks: "{{ libvirt_support_dir }}/resolve_firmware.yml"
+
+    - name: 确认 NVRAM 与 overlay 仍在
+      ansible.builtin.stat:
+        path: "{{ libvirt_path_item }}"
+      loop:
+        - "{{ libvirt_nvram_path }}"
+        - "{{ libvirt_overlay_path }}"
+        - "{{ libvirt_seed_path }}"
+      loop_control:
+        loop_var: libvirt_path_item
+      register: libvirt_relaunch_files
+
+    - name: 续跑文件必须都还在
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: "relaunch 缺少 {{ item.stat.path | default(item.item) }}"
+      loop: "{{ libvirt_relaunch_files.results }}"
+
+    - name: 读取域状态
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - domstate
+          - "{{ libvirt_domain_name }}"
+      register: libvirt_relaunch_state
+      changed_when: false
+      failed_when: false
+
+    - name: 断电：只 destroy，不删盘
+      when: libvirt_relaunch_state.rc == 0
+      ansible.builtin.include_tasks: "{{ libvirt_support_dir }}/validate_relaunch.yml"
+
+    - name: 所有权一致后才断电
+      when: libvirt_relaunch_state.rc == 0
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - destroy
+          - "{{ libvirt_domain_name }}"
+      register: libvirt_relaunch_destroy
+      changed_when: libvirt_relaunch_destroy.rc == 0
+
+    - name: 在重新 create 之前检查显式 NVRAM 是否仍在
+      ansible.builtin.stat:
+        path: "{{ libvirt_nvram_path }}"
+      register: libvirt_nvram_after_destroy
+
+    - name: 瞬态域 destroy 不得丢掉续跑所需 NVRAM
+      ansible.builtin.assert:
+        that:
+          - libvirt_nvram_after_destroy.stat.exists
+          - libvirt_nvram_after_destroy.stat.isreg
+        fail_msg: "显式 NVRAM 在 destroy 后消失，拒绝以新 varstore 冒充原 VM 续跑。"
+
+    - name: 用原 XML 参数重新渲染
+      ansible.builtin.template:
+        src: "{{ libvirt_support_dir }}/domain.xml.j2"
+        dest: "{{ libvirt_instance_dir }}/domain.xml"
+        mode: "0600"
+
+    - name: 用同一磁盘和 NVRAM 再创建
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - create
+          - "{{ libvirt_instance_dir }}/domain.xml"
+      register: libvirt_relaunch_create
+      changed_when: libvirt_relaunch_create.rc == 0
+
+    - name: 等待 DHCP 租约
+      ansible.builtin.command:
+        argv:
+          - virsh
+          - -c
+          - "{{ libvirt_uri }}"
+          - domifaddr
+          - "{{ libvirt_domain_name }}"
+          - --source
+          - lease
+      register: libvirt_lease
+      retries: "{{ (libvirt_ssh_wait_timeout | int / libvirt_ssh_wait_delay | int) | int }}"
+      delay: "{{ libvirt_ssh_wait_delay }}"
+      until: libvirt_lease.stdout is search('ipv4')
+      changed_when: false
+
+    - name: 等待原来的 SSH 密钥可登录
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -i
+          - "{{ libvirt_manifest.identity_file }}"
+          - -o
+          - BatchMode=yes
+          - -o
+          - StrictHostKeyChecking=no
+          - -o
+          - UserKnownHostsFile=/dev/null
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - ConnectTimeout=5
+          - "{{ libvirt_manifest.user }}@{{ libvirt_manifest.address }}"
+          - "true"
+      register: libvirt_relaunch_ssh
+      retries: "{{ (libvirt_ssh_wait_timeout | int / libvirt_ssh_wait_delay | int) | int }}"
+      delay: "{{ libvirt_ssh_wait_delay }}"
+      until: libvirt_relaunch_ssh.rc == 0
+      changed_when: false

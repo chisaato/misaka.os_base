@@ -1,0 +1,107 @@
+---
+- name: 准备配置所有权及兼容入口验证
+  hosts: all
+  become: true
+  tasks:
+    - name: 收集兼容入口调用前的软件包
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: 保存兼容入口调用前的软件包名
+      ansible.builtin.set_fact:
+        logging_prepare_packages: "{{ ansible_facts.packages.keys() | sort }}"
+
+    - name: 验证旧角色入口仅配置 journald
+      ansible.builtin.include_role:
+        name: misaka.os_base.systemd_override
+      vars:
+        systemd_override_journald_max_usage: 256M
+        # 若错误执行了完整 logging，将触发规则名称校验失败。
+        logging_logrotate_rules:
+          - name: ../invalid
+            paths: [/var/log/invalid.log]
+
+    - name: 执行 journald handler
+      ansible.builtin.meta: flush_handlers
+
+    - name: 收集兼容入口调用后的软件包
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: 检查兼容入口 journald 配置
+      ansible.builtin.slurp:
+        src: /etc/systemd/journald.conf.d/01-persist-storage.conf
+      register: logging_prepare_compat
+
+    - name: 断言兼容入口没有引入包安装且旧变量有效
+      ansible.builtin.assert:
+        that:
+          - logging_prepare_packages == (ansible_facts.packages.keys() | sort)
+          - "'SystemMaxUse=256M' in (logging_prepare_compat.content | b64decode).splitlines()"
+
+    # audit 仅作为测试夹具安装，角色必须保留其配置及包状态。
+    - name: 配置 Fedora 测试镜像源
+      ansible.builtin.include_role:
+        name: misaka.os_base.fedora_repo
+      when: ansible_facts['distribution'] == 'Fedora'
+
+    - name: 配置 Debian 测试镜像源
+      ansible.builtin.include_role:
+        name: misaka.os_base.debian_repo
+      when: ansible_facts['distribution'] == 'Debian'
+
+    - name: 安装 Fedora 测试夹具
+      ansible.builtin.dnf:
+        name: [logrotate, audit]
+        state: present
+      register: logging_prepare_fedora_packages
+      until: logging_prepare_fedora_packages is succeeded
+      retries: 3
+      delay: 5
+      when: ansible_facts['distribution'] == 'Fedora'
+
+    - name: 安装 Debian 测试夹具
+      ansible.builtin.apt:
+        name: [logrotate, auditd]
+        state: present
+        update_cache: true
+      register: logging_prepare_debian_packages
+      until: logging_prepare_debian_packages is succeeded
+      retries: 3
+      delay: 5
+      when: ansible_facts['distribution'] == 'Debian'
+
+    - name: 创建同名非角色规则作为防覆盖夹具
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/molecule_logging
+        content: "# 模拟发行版或包提供的同名规则，必须保持原样\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: 查找已有轮转规则
+      ansible.builtin.find:
+        paths: /etc/logrotate.d
+        file_type: file
+      register: logging_prepare_rules
+
+    - name: 记录发行版主配置和原有轮转规则校验和
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+      loop: "{{ ['/etc/logrotate.conf', '/etc/audit/auditd.conf'] + (logging_prepare_rules.files | map(attribute='path') | list) }}"
+      register: logging_prepare_files
+
+    - name: 收集基线软件包状态
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: 保存配置及包状态基线
+      ansible.builtin.copy:
+        dest: /tmp/logging-baseline.json
+        content: >-
+          {{ {'files': logging_prepare_files.results | map(attribute='stat') | list,
+              'packages': ansible_facts.packages.keys() | sort} | to_nice_json }}
+        owner: root
+        group: root
+        mode: "0600"

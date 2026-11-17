@@ -1,0 +1,24 @@
+namespace: misaka
+name: uv
+version: 0.1.0
+readme: README.md
+authors:
+  - chisaato <catsreporter@proton.me>
+description: 声明式管理 uv tool 安装的用户级 Python CLI
+license:
+  - GPL-2.0-or-later
+license_file: ""
+tags:
+  - uv
+  - python
+  - tools
+dependencies: {}
+repository: ""
+issues: ""
+build_ignore:
+  - .vscode
+  - .codegraph
+  - .omo
+  - opencode.json
+  - .ansible
+  - .pytest_cache

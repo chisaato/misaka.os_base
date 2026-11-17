@@ -1,0 +1,19 @@
+alma_repo_saphana_repos:
+  - repo_id: saphana
+    repo_name: AlmaLinux $releasever - SAPHANA
+    repo_baseurl: https://repo.almalinux.org/almalinux/$releasever/SAPHANA/$basearch/os/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/saphana
+  - repo_id: saphana-debuginfo
+    repo_name: AlmaLinux $releasever - SAPHANA - Debug
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/SAPHANA/debug/$basearch/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/saphana-debug
+  - repo_id: saphana-source
+    repo_name: AlmaLinux $releasever - SAPHANA - Source
+    repo_baseurl: https://repo.almalinux.org/vault/$releasever/SAPHANA/Source/
+    repo_enabled: 0
+    repo_gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9
+    repo_mirrorlist: https://mirrors.almalinux.org/mirrorlist/$releasever/saphana-source

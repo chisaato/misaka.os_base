@@ -1,0 +1,3 @@
+---
+- name: 复用日志所有权与兼容入口准备
+  ansible.builtin.import_playbook: ../logging_fedora/prepare.yml

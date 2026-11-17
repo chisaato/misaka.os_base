@@ -1,0 +1,58 @@
+---
+- name: 准备空载 PVE 实验节点（只改 guest）
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: 校验测试基线
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - ansible_facts['distribution_major_version'] | int == 12
+          - ansible_facts['hostname'] == 'pve-lab'
+
+    - name: 安装实验专用动态 hosts 脚本
+      ansible.builtin.copy:
+        src: hosts.sh
+        dest: /usr/local/sbin/misaka-pve-lab-hosts
+        mode: "0700"
+
+    - name: 安装实验专用启动前 hosts 服务
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/misaka-pve-lab-hosts.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Misaka empty PVE lab DHCP hostname mapping
+          Wants=network-online.target
+          After=network-online.target cloud-init.service
+          Before=pve-cluster.service
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/misaka-pve-lab-hosts
+          SuccessExitStatus=10
+          RemainAfterExit=yes
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: 更新 guest 的 hosts 映射
+      ansible.builtin.command: /usr/local/sbin/misaka-pve-lab-hosts
+      register: pve_lab_hosts
+      failed_when: pve_lab_hosts.rc not in [0, 10]
+      changed_when: pve_lab_hosts.rc == 10
+
+    - name: 启用启动前地址映射
+      ansible.builtin.systemd_service:
+        name: misaka-pve-lab-hosts
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: 配置 Debian 12 源
+      ansible.builtin.include_role:
+        name: misaka.os_base.debian_repo
+
+    - name: 按 PVE 8 数据映射配置安装源与校验密钥
+      ansible.builtin.include_role:
+        name: misaka.os_base.pve_on_debian
+        tasks_from: pve_install_source

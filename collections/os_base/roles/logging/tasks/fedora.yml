@@ -1,0 +1,10 @@
+---
+- name: 安装 Fedora logrotate
+  become: true
+  ansible.builtin.dnf:
+    name: logrotate
+    state: present
+  register: logging_package_result
+  retries: 3
+  delay: 5
+  until: logging_package_result is succeeded

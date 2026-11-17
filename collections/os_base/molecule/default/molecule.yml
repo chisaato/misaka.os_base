@@ -1,0 +1,27 @@
+dependency:
+  name: galaxy
+driver:
+  name: vagrant
+  provider:
+    name: libvirt
+    type: libvirt
+platforms:
+  - name: instance
+    box: fedora/39-cloud-base
+    # interfaces:
+    #   - auto_config: true
+    #     network_name: private_network
+    #     type: static
+    #     ip: 192.168.10.10
+    # Dictionary of `config` options.
+    # config_options:
+    #   ssh.keep_alive: yes
+    #   ssh.remote_user: "'vagrant'"
+provisioner:
+  name: ansible
+  connection_options:
+    ansible_ssh_user: vagrant
+    ansible_become: true
+  log: true
+  lint:
+    name: ansible-lint

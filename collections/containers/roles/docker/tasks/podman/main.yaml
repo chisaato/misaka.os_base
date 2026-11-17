@@ -1,0 +1,204 @@
+# 检测对应发行版的 task 文件是否存在
+- name: 检测对应发行版的 task 文件是否存在
+  ansible.builtin.stat:
+    path: "{{ role_path }}/tasks/podman/{{ ansible_facts['distribution'] | lower }}.yaml"
+  delegate_to: localhost
+  register: docker_distro_task_file
+
+# 不在就退出
+- name: 提示不受支持的发行版 {{ ansible_facts['distribution'] }}
+  ansible.builtin.fail:
+    msg:
+      - "尚未支持在 {{ ansible_facts['distribution'] }} 上安装 Podman"
+  when: not docker_distro_task_file.stat.exists
+
+# 停止 Docker 服务（始终清理，即便 socket 由 Podman 模拟）
+- name: 停止并禁用 Docker 服务
+  become: true
+  failed_when: false
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: false
+    state: stopped
+
+# 探测 /run/docker.sock 与 docker.socket 单元，区分真 dockerd 与 Podman 模拟
+- name: 探测现有 /run/docker.sock 状态
+  become: true
+  ansible.builtin.stat:
+    path: /run/docker.sock
+  register: docker_initial_run_sock
+
+- name: 探测 docker.socket systemd 单元信息
+  become: true
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    argv:
+      - systemctl
+      - show
+      - docker.socket
+      - --property=Id,LoadState,FragmentPath,Listen,Description
+      - --no-pager
+  register: docker_socket_unit_info
+  changed_when: false
+  failed_when: false
+
+- name: 判断 docker.socket 是否由 Podman 模拟
+  ansible.builtin.set_fact:
+    docker_socket_is_podman_emulated: >-
+      {{ ((docker_initial_run_sock.stat.exists | default(false) | bool)
+          and (docker_initial_run_sock.stat.islnk | default(false) | bool)
+          and ('podman.sock' in (docker_initial_run_sock.stat.lnk_target | default(''))))
+         or ('podman' in ((docker_socket_unit_info.stdout | default('')) | lower)) }}
+    docker_socket_unit_loaded: "{{ 'LoadState=loaded' in (docker_socket_unit_info.stdout | default('')) }}"
+
+# 仅在 docker.socket 为真实 dockerd 单元（非 Podman 模拟）时停止并禁用
+- name: 停止并禁用真实 Docker socket
+  become: true
+  when:
+    - not (docker_socket_is_podman_emulated | bool)
+    - docker_socket_unit_loaded | bool
+  failed_when: false
+  ansible.builtin.systemd_service:
+    name: docker.socket
+    enabled: false
+    state: stopped
+
+- name: 重载 systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# 导入
+- name: 导入 {{ ansible_facts['distribution'] }}  设置 Podman 任务
+  ansible.builtin.include_tasks: "podman/{{ ansible_facts['distribution'] | lower }}.yaml"
+
+# 在 /etc/containers/nodocker 创建空文件来关闭提示
+- name: 关闭 Podman 的 Docker 模拟提示
+  become: true
+  when: docker_disable_podman_docker_emulate_hint
+  ansible.builtin.file:
+    path: /etc/containers/nodocker
+    state: touch
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+# 在 /etc/containers/containers.conf.d/020-disable-compose-warn-logs.conf 创建文件来关闭警告
+# 关闭 podman compose 执行外部命令的警告
+# 先确保目录存在
+- name: 确保 containers.conf.d 目录存在
+  become: true
+  when: docker_disable_podman_compose_external_command_hint
+  ansible.builtin.file:
+    path: /etc/containers/containers.conf.d/
+    state: directory
+    mode: "0755"
+
+- name: 关闭 podman compose 执行外部命令的警告
+  become: true
+  when: docker_disable_podman_compose_external_command_hint
+  ansible.builtin.template:
+    src: 020-disable-compose-warn-logs.conf.j2
+    dest: /etc/containers/containers.conf.d/020-disable-compose-warn-logs.conf
+    mode: "0644"
+
+- name: 让 Netavark 默认使用 nftables
+  become: true
+  ansible.builtin.template:
+    src: 030-netavark-nftables.conf.j2
+    dest: /etc/containers/containers.conf.d/030-netavark-nftables.conf
+    mode: "0644"
+
+# 渲染 Podman Registry 镜像站配置文件
+# 先确保目录存在
+- name: 确保 registries.conf.d 目录存在
+  become: true
+  when: host_geo.country == "cn"
+  ansible.builtin.file:
+    path: /etc/containers/registries.conf.d/
+    state: directory
+    mode: "0755"
+
+- name: 渲染 Podman Registry 镜像站配置文件
+  become: true
+  when: host_geo.country == "cn"
+  ansible.builtin.template:
+    src: 555-mirrors.conf.j2
+    dest: /etc/containers/registries.conf.d/555-mirrors.conf
+    mode: "0644"
+
+- name: 渲染 Podman 非限定搜索站点
+  become: true
+  ansible.builtin.template:
+    src: 556-unqualified-search.conf.j2
+    dest: /etc/containers/registries.conf.d/556-unqualified-search.conf
+    mode: "0644"
+
+# 创建 /etc/systemd/system/podman.socket.d 对 socket 进行覆盖
+- name: 创建 Podman Socket 覆盖
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/system/podman.socket.d
+    state: directory
+    mode: "0755"
+
+- name: 允许特权 Podman 被非 root 用户访问(接近 Docker 行为)
+  become: true
+  when: docker_podman_allow_user_access
+  ansible.builtin.template:
+    src: "podman.socket.d/{{ item }}.j2"
+    dest: "/etc/systemd/system/podman.socket.d/{{ item }}"
+    mode: "0644"
+  with_items:
+    - 02-podman-user-access.conf
+    - 03-podman-dir-user-access.conf
+
+# 检查 /run/docker.sock 是否已是指向 Podman socket 的符号链接
+- name: 探测模拟 Docker Socket 状态
+  become: true
+  when: docker_podman_enable_socket_link
+  ansible.builtin.stat:
+    path: /run/docker.sock
+  register: docker_podman_run_sock
+
+- name: 判断是否需要重建模拟 Docker Socket
+  when: docker_podman_enable_socket_link
+  ansible.builtin.set_fact:
+    docker_podman_sock_needs_create: >-
+      {{ not ((docker_podman_run_sock.stat.exists | default(false) | bool)
+          and (docker_podman_run_sock.stat.islnk | default(false) | bool)
+          and (docker_podman_run_sock.stat.lnk_source | default('') == '/run/podman/podman.sock')) }}
+
+# 移除 Docker 留下的真实 /run/docker.sock，否则 tmpfiles 的 L 类型不会覆盖
+# 仅在缺失或指向不一致时清理,保证幂等语义诚实
+- name: 移除旧的 Docker Socket
+  become: true
+  when:
+    - docker_podman_enable_socket_link
+    - docker_podman_sock_needs_create | default(false) | bool
+  ansible.builtin.file:
+    path: /run/docker.sock
+    state: absent
+
+- name: 添加模拟 Docker Socket 路径配置
+  become: true
+  ansible.builtin.template:
+    src: "docker-podman-sock.conf.j2"
+    dest: "/etc/tmpfiles.d/docker-podman-sock.conf"
+    mode: "0644"
+  when: docker_podman_enable_socket_link
+
+- name: 创建模拟的 Docker Socket
+  become: true
+  ansible.builtin.command:
+    cmd: systemd-tmpfiles --create /etc/tmpfiles.d/docker-podman-sock.conf
+  changed_when: true
+  when:
+    - docker_podman_enable_socket_link
+    - docker_podman_sock_needs_create | default(false) | bool
+
+# 环境约束:绝不允许重启 podman 服务,仅保证开机自启
+- name: 保证 Podman 自动重启服务开机自启
+  become: true
+  ansible.builtin.systemd_service:
+    name: podman-restart
+    enabled: true

@@ -1,0 +1,6 @@
+{
+    "ansible.python.interpreterPath": "/usr/bin/python",
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/tasks": "file:///data2/sourcecode/ansible-collections/misaka.os_base/roles/fedora_init/tasks/dnf_automatic%2Cyml"
+    }
+}

@@ -1,0 +1,25 @@
+---
+- name: 显式 until 优先于 skip_reboot
+  when: fedora_dist_upgrade_until is defined
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_until_effective: "{{ fedora_dist_upgrade_until }}"
+
+- name: 未设置 until 且跳过重启时停在下载完成
+  when:
+    - fedora_dist_upgrade_until is not defined
+    - fedora_dist_upgrade_skip_reboot | bool
+  block:
+    - name: 提示 skip_reboot 已是弃用别名
+      ansible.builtin.debug:
+        msg: "fedora_dist_upgrade_skip_reboot 已弃用。未设置 until 时，true 表示下载后暂停，且不再执行 post/finalize。"
+
+    - name: 映射为 downloaded
+      ansible.builtin.set_fact:
+        fedora_dist_upgrade_until_effective: downloaded
+
+- name: 未设置 until 且允许重启时跑完全程
+  when:
+    - fedora_dist_upgrade_until is not defined
+    - not (fedora_dist_upgrade_skip_reboot | bool)
+  ansible.builtin.set_fact:
+    fedora_dist_upgrade_until_effective: completed

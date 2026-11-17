@@ -1,0 +1,39 @@
+---
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: default
+  options:
+    managed: true
+  libvirt:
+    libvirt_image_source: debian-html
+    libvirt_image_index_url: https://cloud.debian.org/images/cloud/bookworm/latest/
+    libvirt_image_name_pattern: ^debian-12-generic-amd64[.]qcow2$$
+    libvirt_expected_distro: Debian
+    libvirt_expected_major: "12"
+platforms:
+  - name: debian12
+provisioner:
+  name: ansible
+  log: true
+  playbooks:
+    create: ../../../../shared/molecule/libvirt/create.yml
+    destroy: ../../../../shared/molecule/libvirt/destroy.yml
+ansible:
+  cfg:
+    defaults:
+      host_key_checking: false
+  env:
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/../../.dev
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - destroy
+    - create
+    - converge
+    - verify
+    - destroy
+verifier:
+  name: ansible
